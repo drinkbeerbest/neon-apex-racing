@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Local test artifacts
+test-results/
+verify.mjs
+
+# Local workspace data
+.workbuddy/
+
+# Environment and local files
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db

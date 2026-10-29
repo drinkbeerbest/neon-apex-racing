@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#05070d" />
+    <meta name="description" content="NEON APEX 霓虹顶点——驾驶真实风格跑车，在雨夜霓虹环线中漂移竞速。" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23050b14'/%3E%3Cpath d='M12 46 25 16h9L21 46zm21 0 13-30h8L41 46z' fill='%2354eaff'/%3E%3C/svg%3E" />
+    <title>NEON APEX — 霓虹环线</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="scene"></div>
+      <div class="vignette"></div>
+      <div id="speed-lines" class="speed-lines"></div>
+      <div id="impact-flash"></div>
+
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="Neon Apex 首页">
+          <span class="brand-mark">N<span>A</span></span>
+          <span class="brand-name">NEON APEX<small>MIDNIGHT CIRCUIT</small></span>
+        </a>
+        <div class="top-actions">
+          <button id="camera-btn" class="icon-button" aria-label="切换视角" title="切换视角 (C)">
+            <svg viewBox="0 0 24 24"><path d="M14.5 5 13 3H7L5.5 5H2v14h20V5h-7.5ZM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8Z"/></svg>
+          </button>
+          <button id="sound-btn" class="icon-button" aria-label="开启声音" title="声音 (M)">
+            <svg class="sound-on" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3Zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4Zm-2.5-8.8v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6Z"/></svg>
+          </button>
+          <button id="pause-btn" class="icon-button" aria-label="暂停" title="暂停 (Esc)">
+            <svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <main id="start-screen" class="screen start-screen">
+        <section class="hero-copy">
+          <div class="eyebrow"><span></span> NIGHT RACING EXPERIENCE</div>
+          <h1>NEON<br/><em>APEX</em></h1>
+          <p class="cn-title">霓 虹 顶 点</p>
+          <p class="hero-description">穿过雨夜，压住弯心。<br/>在东京湾环线，跑出你的完美一圈。</p>
+          <button id="start-btn" class="primary-button">
+            <span>点火出发</span>
+            <svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+          </button>
+          <div class="start-meta"><span>3 圈竞速</span><i></i><span>自由视角</span><i></i><span>真实漂移</span></div>
+        </section>
+        <aside class="controls-card">
+          <div class="card-kicker">DRIVER BRIEFING</div>
+          <h2>驾驶指南</h2>
+          <div class="control-row"><div><kbd>W</kbd><kbd>S</kbd><span class="key-alt">/ ↑ ↓</span></div><span>油门 / 制动</span></div>
+          <div class="control-row"><div><kbd>A</kbd><kbd>D</kbd><span class="key-alt">/ ← →</span></div><span>转向</span></div>
+          <div class="control-row"><div><kbd class="wide">SPACE</kbd></div><span>按住漂移</span></div>
+          <div class="control-row"><div><kbd>C</kbd><kbd>R</kbd></div><span>视角 / 重置</span></div>
+          <p><span class="cyan-dot"></span>漂移过弯可积蓄氮气，松开漂移键释放。</p>
+        </aside>
+        <div class="start-footer"><span>01 / TOKYO BAY</span><span>23:48 &nbsp; · &nbsp; 18°C &nbsp; · &nbsp; WET</span></div>
+      </main>
+
+      <section id="hud" class="hud hidden" aria-label="比赛信息">
+        <div class="race-stats glass-panel">
+          <div class="stat-lap"><span>圈数</span><strong><b id="lap-current">1</b><small>/ 3</small></strong></div>
+          <div class="stat-divider"></div>
+          <div class="stat-time"><span>当前圈速</span><strong id="lap-time">00:00.000</strong><small>最佳 <b id="best-time">--:--.---</b></small></div>
+        </div>
+        <div class="position-tag"><span></span> TOKYO BAY <b>01</b></div>
+        <div class="minimap-wrap glass-panel">
+          <div class="map-title"><span>赛道地图</span><small>LIVE</small></div>
+          <canvas id="minimap" width="360" height="300"></canvas>
+          <div class="map-legend"><span><i class="player-dot"></i> YOU</span><span>N <b>↑</b></span></div>
+        </div>
+        <div id="drift-meter" class="drift-meter">
+          <div class="drift-label"><span>DRIFT</span><b id="drift-score">+0</b></div>
+          <div class="nitro-track"><i id="nitro-fill"></i></div>
+          <small>氮气蓄能</small>
+        </div>
+        <div class="speedometer">
+          <div class="gear"><span>GEAR</span><b id="gear">1</b></div>
+          <div class="speed-value"><strong id="speed">000</strong><span>KM/H</span></div>
+          <div class="rpm" id="rpm"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="hud-hint"><span><kbd>SPACE</kbd> 漂移</span><span><kbd>R</kbd> 重置</span></div>
+      </section>
+
+      <div id="countdown" class="countdown hidden"><span>3</span><small>READY</small></div>
+      <div id="toast" class="toast"><span></span></div>
+      <div id="wrong-way" class="wrong-way hidden">方向错误 <small>WRONG WAY</small></div>
+
+      <section id="pause-screen" class="screen modal-screen hidden">
+        <div class="modal-card">
+          <div class="eyebrow"><span></span> RACE CONTROL</div>
+          <h2>比赛暂停</h2>
+          <p>引擎已待命，随时回到赛道。</p>
+          <button id="resume-btn" class="primary-button"><span>继续比赛</span></button>
+          <button id="restart-btn" class="text-button">重新开始</button>
+        </div>
+      </section>
+
+      <section id="finish-screen" class="screen modal-screen hidden">
+        <div class="modal-card finish-card">
+          <div class="eyebrow"><span></span> RACE COMPLETE</div>
+          <h2>冲线完成</h2>
+          <p>TOKYO BAY · 3 LAPS</p>
+          <div class="finish-time"><span>总用时</span><strong id="total-time">00:00.000</strong></div>
+          <div class="finish-best"><span>最佳圈速</span><b id="finish-best-time">00:00.000</b></div>
+          <button id="race-again-btn" class="primary-button"><span>再次挑战</span></button>
+        </div>
+      </section>
+
+      <div id="touch-controls" class="touch-controls hidden">
+        <div class="touch-steer"><button data-control="left" aria-label="左转">‹</button><button data-control="right" aria-label="右转">›</button></div>
+        <div class="touch-pedals"><button class="touch-drift" data-control="drift">漂移</button><button class="touch-brake" data-control="brake">制动</button><button class="touch-gas" data-control="gas">油门</button></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
