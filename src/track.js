@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 
 export const TRACK_WIDTH = 17;
-const SAMPLE_COUNT = 900;
+export const TRACK_SAMPLES = 900;
+const SAMPLE_COUNT = TRACK_SAMPLES;
 
 function seededRandom(seed = 42) {
   return () => {
@@ -93,8 +94,10 @@ function makeSignTexture(text, subtext, color = '#59edff') {
 }
 
 export class NeonTrack {
-  constructor(scene) {
+  constructor(scene, { pointLights = 8 } = {}) {
     this.scene = scene;
+    this.sampleCount = SAMPLE_COUNT;
+    this.pointLights = pointLights;
     this.group = new THREE.Group();
     scene.add(this.group);
     this.curve = new THREE.CatmullRomCurve3([
@@ -157,12 +160,14 @@ export class NeonTrack {
       for (let i = 0; i < SAMPLE_COUNT; i++) check(i);
     }
     const sample = this.samples[bestIndex];
-    const delta = new THREE.Vector3().subVectors(position, sample.point);
     return {
-      ...sample,
       index: bestIndex,
       distance: Math.sqrt(best),
-      lateral: delta.dot(sample.normal),
+      lateral: (position.x - sample.point.x) * sample.normal.x + (position.z - sample.point.z) * sample.normal.z,
+      point: sample.point,
+      tangent: sample.tangent,
+      normal: sample.normal,
+      t: sample.t,
     };
   }
 
@@ -419,6 +424,7 @@ export class NeonTrack {
 
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x253441, metalness: 0.85, roughness: 0.3 });
     const lampMat = new THREE.MeshBasicMaterial({ color: 0x8eeeff, toneMapped: false });
+    const lightStep = this.pointLights > 0 ? Math.max(1, Math.floor(32 / this.pointLights)) : 0;
     for (let i = 0; i < 32; i++) {
       const t = i / 32;
       const { point, tangent, normal } = this.frameAt(t);
@@ -436,7 +442,7 @@ export class NeonTrack {
       lamp.position.set(-side * 2.75, 7.36, 0);
       group.add(lamp);
       this.group.add(group);
-      if (i % 4 === 0) {
+      if (lightStep && i % lightStep === 0 && i / lightStep < this.pointLights) {
         const light = new THREE.PointLight(i % 8 === 0 ? 0x3acfff : 0xff3c88, 22, 25, 2);
         light.position.copy(group.position);
         light.position.y = 5.8;

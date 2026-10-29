@@ -57,6 +57,14 @@ class ParticlePool {
     this.colors[i * 3 + 2] = color.b;
   }
 
+  clear() {
+    for (let i = 0; i < this.max; i++) {
+      this.life[i] = 0;
+      this.positions[i * 3 + 1] = -1000;
+    }
+    this.points.geometry.attributes.position.needsUpdate = true;
+  }
+
   update(dt) {
     for (let i = 0; i < this.max; i++) {
       if (this.life[i] <= 0) continue;
@@ -89,6 +97,12 @@ export class RacingEffects {
     this.nitro = new ParticlePool(scene, 180, { size: 0.2, opacity: 0.75, gravity: 0, drag: 2, additive: true });
     this.skidCursor = 0;
     this.skidTimer = 0;
+    this.skidDummy = new THREE.Object3D();
+    this.smokeColor = new THREE.Color(0.32, 0.39, 0.45);
+    this.sparkColor = new THREE.Color();
+    this.nitroColors = [new THREE.Color(0x4de8ff), new THREE.Color(0x766cff)];
+    this.tmpPosition = new THREE.Vector3();
+    this.tmpVelocity = new THREE.Vector3();
     this.skidMarks = new THREE.InstancedMesh(
       new THREE.BoxGeometry(0.16, 0.006, 0.75),
       new THREE.MeshBasicMaterial({ color: 0x030406, transparent: true, opacity: 0.68 }),
@@ -96,12 +110,23 @@ export class RacingEffects {
     );
     this.skidMarks.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.skidMarks.frustumCulled = false;
-    const hidden = new THREE.Object3D();
-    hidden.position.y = -100;
-    hidden.updateMatrix();
-    for (let i = 0; i < 600; i++) this.skidMarks.setMatrixAt(i, hidden.matrix);
+    this.hiddenSkidMatrix = new THREE.Matrix4().makeTranslation(0, -100, 0);
+    for (let i = 0; i < 600; i++) this.skidMarks.setMatrixAt(i, this.hiddenSkidMatrix);
     scene.add(this.skidMarks);
     this.buildRain();
+  }
+
+  reset() {
+    this.smoke.clear();
+    this.sparks.clear();
+    this.nitro.clear();
+    this.clearSkids();
+  }
+
+  clearSkids() {
+    for (let i = 0; i < 600; i++) this.skidMarks.setMatrixAt(i, this.hiddenSkidMatrix);
+    this.skidMarks.instanceMatrix.needsUpdate = true;
+    this.skidCursor = 0;
   }
 
   buildRain() {
@@ -123,42 +148,45 @@ export class RacingEffects {
   emitDrift(position, velocity, intensity = 1) {
     const count = Math.random() < intensity ? 2 : 1;
     for (let i = 0; i < count; i++) {
-      this.smoke.emit(
-        position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.25, 0, (Math.random() - 0.5) * 0.25)),
-        new THREE.Vector3(-velocity.x * 0.08 + (Math.random() - 0.5), 0.4 + Math.random() * 0.5, -velocity.z * 0.08 + (Math.random() - 0.5)),
-        0.65 + Math.random() * 0.6,
-        new THREE.Color(0.32, 0.39, 0.45)
+      this.tmpPosition.copy(position);
+      this.tmpPosition.x += (Math.random() - 0.5) * 0.25;
+      this.tmpPosition.z += (Math.random() - 0.5) * 0.25;
+      this.tmpVelocity.set(
+        -velocity.x * 0.08 + (Math.random() - 0.5),
+        0.4 + Math.random() * 0.5,
+        -velocity.z * 0.08 + (Math.random() - 0.5)
       );
+      this.smoke.emit(this.tmpPosition, this.tmpVelocity, 0.65 + Math.random() * 0.6, this.smokeColor);
     }
   }
 
   emitCollision(position, normal) {
     for (let i = 0; i < 34; i++) {
-      const velocity = normal.clone().multiplyScalar(3 + Math.random() * 9);
-      velocity.x += (Math.random() - 0.5) * 8;
-      velocity.z += (Math.random() - 0.5) * 8;
-      velocity.y = 2 + Math.random() * 7;
-      this.sparks.emit(position, velocity, 0.25 + Math.random() * 0.65, new THREE.Color().setHSL(0.07 + Math.random() * 0.05, 1, 0.55 + Math.random() * 0.3));
+      this.tmpVelocity.copy(normal).multiplyScalar(3 + Math.random() * 9);
+      this.tmpVelocity.x += (Math.random() - 0.5) * 8;
+      this.tmpVelocity.z += (Math.random() - 0.5) * 8;
+      this.tmpVelocity.y = 2 + Math.random() * 7;
+      this.sparkColor.setHSL(0.07 + Math.random() * 0.05, 1, 0.55 + Math.random() * 0.3);
+      this.sparks.emit(position, this.tmpVelocity, 0.25 + Math.random() * 0.65, this.sparkColor);
     }
   }
 
   emitNitro(position, backward, speed) {
     for (let i = 0; i < 2; i++) {
-      const velocity = backward.clone().multiplyScalar(9 + Math.random() * 8 + speed * 0.08);
-      velocity.x += (Math.random() - 0.5) * 1.5;
-      velocity.y += (Math.random() - 0.5) * 0.5;
-      velocity.z += (Math.random() - 0.5) * 1.5;
-      this.nitro.emit(position, velocity, 0.18 + Math.random() * 0.25, new THREE.Color(Math.random() > 0.5 ? 0x4de8ff : 0x766cff));
+      this.tmpVelocity.copy(backward).multiplyScalar(9 + Math.random() * 8 + speed * 0.08);
+      this.tmpVelocity.x += (Math.random() - 0.5) * 1.5;
+      this.tmpVelocity.y += (Math.random() - 0.5) * 0.5;
+      this.tmpVelocity.z += (Math.random() - 0.5) * 1.5;
+      this.nitro.emit(position, this.tmpVelocity, 0.18 + Math.random() * 0.25, this.nitroColors[Math.random() > 0.5 ? 1 : 0]);
     }
   }
 
   addSkid(position, heading) {
-    const dummy = new THREE.Object3D();
-    dummy.position.copy(position);
-    dummy.position.y = 0.038;
-    dummy.rotation.y = heading;
-    dummy.updateMatrix();
-    this.skidMarks.setMatrixAt(this.skidCursor, dummy.matrix);
+    this.skidDummy.position.copy(position);
+    this.skidDummy.position.y = 0.038;
+    this.skidDummy.rotation.set(0, heading, 0);
+    this.skidDummy.updateMatrix();
+    this.skidMarks.setMatrixAt(this.skidCursor, this.skidDummy.matrix);
     this.skidCursor = (this.skidCursor + 1) % 600;
     this.skidMarks.instanceMatrix.needsUpdate = true;
   }

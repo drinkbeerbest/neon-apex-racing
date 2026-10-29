@@ -6,7 +6,6 @@ dist/
 
 # Local test artifacts
 test-results/
-verify.mjs
 
 # Local workspace data
 .workbuddy/

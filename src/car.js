@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
+const WHEEL_LOCAL_POSITIONS = [
+  [-0.88, 0.28, -1.3], [0.88, 0.28, -1.3],
+  [-0.88, 0.28, 1.36], [0.88, 0.28, 1.36],
+];
 
 function catmull(p0, p1, p2, p3, t) {
   const t2 = t * t;
@@ -679,11 +683,9 @@ export class SportsCar {
     this.boostLight.intensity = boosting ? 3.5 + Math.random() * 2 : 0;
   }
 
-  wheelWorldPosition(index) {
-    const positions = [
-      [-0.88, 0.28, -1.3], [0.88, 0.28, -1.3],
-      [-0.88, 0.28, 1.36], [0.88, 0.28, 1.36],
-    ];
-    return this.group.localToWorld(new THREE.Vector3(...positions[index]));
+  wheelWorldPosition(index, target = new THREE.Vector3()) {
+    const position = WHEEL_LOCAL_POSITIONS[index];
+    target.set(position[0], position[1], position[2]);
+    return this.group.localToWorld(target);
   }
 }
