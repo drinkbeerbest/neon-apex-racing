@@ -51,8 +51,9 @@
           <div class="control-row"><div><kbd>W</kbd><kbd>S</kbd><span class="key-alt">/ ↑ ↓</span></div><span>油门 / 制动</span></div>
           <div class="control-row"><div><kbd>A</kbd><kbd>D</kbd><span class="key-alt">/ ← →</span></div><span>转向</span></div>
           <div class="control-row"><div><kbd class="wide">SPACE</kbd></div><span>按住漂移</span></div>
+          <div class="control-row"><div><kbd class="wide">SHIFT</kbd></div><span>氮气加速</span></div>
           <div class="control-row"><div><kbd>C</kbd><kbd>R</kbd></div><span>视角 / 重置</span></div>
-          <p><span class="cyan-dot"></span>漂移过弯可积蓄氮气，松开漂移键释放。</p>
+          <p><span class="cyan-dot"></span>漂移过弯积蓄氮气，按住 Shift 喷射加速。</p>
         </aside>
         <div class="start-footer"><span>01 / TOKYO BAY</span><span>23:48 &nbsp; · &nbsp; 18°C &nbsp; · &nbsp; WET</span></div>
       </main>
@@ -72,14 +73,14 @@
         <div id="drift-meter" class="drift-meter">
           <div class="drift-label"><span>DRIFT</span><b id="drift-score">+0</b></div>
           <div class="nitro-track"><i id="nitro-fill"></i></div>
-          <small>氮气蓄能</small>
+          <small>氮气蓄能 · SHIFT 加速</small>
         </div>
         <div class="speedometer">
           <div class="gear"><span>GEAR</span><b id="gear">1</b></div>
           <div class="speed-value"><strong id="speed">000</strong><span>KM/H</span></div>
           <div class="rpm" id="rpm"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
         </div>
-        <div class="hud-hint"><span><kbd>SPACE</kbd> 漂移</span><span><kbd>R</kbd> 重置</span></div>
+        <div class="hud-hint"><span><kbd>SHIFT</kbd> 氮气</span><span><kbd>SPACE</kbd> 漂移</span><span><kbd>R</kbd> 重置</span></div>
       </section>
 
       <div id="countdown" class="countdown hidden"><span>3</span><small>READY</small></div>
@@ -109,7 +110,7 @@
 
       <div id="touch-controls" class="touch-controls hidden">
         <div class="touch-steer"><button data-control="left" aria-label="左转">‹</button><button data-control="right" aria-label="右转">›</button></div>
-        <div class="touch-pedals"><button class="touch-drift" data-control="drift">漂移</button><button class="touch-brake" data-control="brake">制动</button><button class="touch-gas" data-control="gas">油门</button></div>
+        <div class="touch-pedals"><button class="touch-boost" data-control="boost">氮气</button><button class="touch-drift" data-control="drift">漂移</button><button class="touch-brake" data-control="brake">制动</button><button class="touch-gas" data-control="gas">油门</button></div>
       </div>
     </div>
     <script type="module" src="/src/main.js"></script>

@@ -110,7 +110,7 @@ class EngineAudio {
     this.oscillators[1].frequency.setTargetAtTime(rpm * 2.03, now, 0.045);
     this.filter.frequency.setTargetAtTime(450 + speed * 22 + throttle * 500 + (boosting ? 900 : 0), now, 0.06);
     this.engineGain.gain.setTargetAtTime(active && this.enabled ? 0.09 + throttle * 0.045 : 0, now, 0.08);
-    this.noiseGain.gain.setTargetAtTime(active && this.enabled ? speed * 0.00032 + (drifting ? 0.065 : 0) : 0, now, 0.06);
+    this.noiseGain.gain.setTargetAtTime(active && this.enabled ? speed * 0.00032 + (drifting ? 0.065 : 0) + (boosting ? 0.045 : 0) : 0, now, 0.06);
   }
   impact() {
     if (!this.context || !this.enabled) return;
@@ -131,18 +131,20 @@ class EngineAudio {
 }
 const audio = new EngineAudio();
 
-const input = { gas: false, brake: false, left: false, right: false, drift: false };
+const input = { gas: false, brake: false, left: false, right: false, drift: false, boost: false };
 const keyMap = {
   KeyW: 'gas', ArrowUp: 'gas', KeyS: 'brake', ArrowDown: 'brake',
   KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', Space: 'drift',
+  ShiftLeft: 'boost', ShiftRight: 'boost',
 };
 const state = {
   mode: 'intro', position: new THREE.Vector3(), velocity: new THREE.Vector3(), heading: 0,
   steering: 0, driftAngle: 0, drifting: false, wasDrifting: false, nitro: 0, driftScore: 0,
-  boostTime: 0, lap: 1, nearestIndex: -1, progress: 0, nextLap: 1, startProgress: 0,
+  boosting: false, boostDepleted: false, lap: 1, nearestIndex: -1, progress: 0, nextLap: 1, startProgress: 0,
   raceStart: 0, lapStart: 0, bestLap: Infinity, collisionCooldown: 0, shake: 0,
   cameraMode: 0, wrongWayTime: 0, toastTimer: 0, elapsed: 0,
 };
+if (import.meta.env.DEV) window.__NEON_DEBUG__ = { scene, car, camera, state };
 let countdownStart = 0;
 let countdownValue = null;
 let previousTime = performance.now();
@@ -176,14 +178,15 @@ function resetCar(fullReset = false) {
   state.steering = 0;
   state.driftAngle = 0;
   state.drifting = false;
-  state.boostTime = 0;
+  state.boosting = false;
+  state.boostDepleted = false;
   state.nearestIndex = track.nearest(state.position).index;
   state.previousIndex = state.nearestIndex;
   car.group.position.copy(state.position);
   car.group.rotation.y = state.heading;
   if (fullReset) {
     state.lap = 1;
-    state.nitro = 0;
+    state.nitro = 35;
     state.driftScore = 0;
     state.bestLap = Infinity;
     state.startProgress = state.nearestIndex / 900;
@@ -296,7 +299,7 @@ function completeLap(now) {
   state.lapStart = now;
   ui.lap.textContent = state.lap;
   showToast(state.lap === 3 ? '最终圈 · 全力冲刺' : `第 ${state.lap} 圈 · ${formatTime(lapTime)}`);
-  state.nitro = Math.min(100, state.nitro + 20);
+  state.nitro = Math.min(100, state.nitro + 25);
 }
 
 function updateCountdown(now) {
@@ -334,11 +337,24 @@ function updatePhysics(dt, now) {
   state.steering = lerp(state.steering, steerInput, 1 - Math.exp(-7 * dt));
   state.drifting = active && input.drift && speed > 10 && Math.abs(state.steering) > 0.08;
 
+  state.boosting = active && input.boost && state.nitro > 0.1 && forwardSpeed > -1.5;
+  if (state.boosting) {
+    state.nitro = Math.max(0, state.nitro - 30 * dt);
+    if (state.nitro <= 0.1) state.boosting = false;
+  }
+  if (!input.boost) state.boostDepleted = false;
+  if (active && input.boost && state.nitro <= 0.1 && !state.boostDepleted) {
+    state.boostDepleted = true;
+    showToast('氮气耗尽 · 漂移补充');
+  }
+
   if (throttle) {
-    const boost = state.boostTime > 0;
-    const maxSpeed = boost ? 98 : 84;
-    const acceleration = (boost ? 39 : 29) * (1 - clamp(Math.max(0, forwardSpeed) / maxSpeed, 0, 0.93));
+    const acceleration = 29 * (1 - clamp(Math.max(0, forwardSpeed) / 88, 0, 0.93));
     state.velocity.addScaledVector(forward, acceleration * dt);
+  }
+  if (state.boosting) {
+    const boostAcceleration = 37 * (1 - clamp(Math.max(0, forwardSpeed) / 108, 0, 0.92));
+    state.velocity.addScaledVector(forward, boostAcceleration * dt);
   }
   if (braking) {
     if (forwardSpeed > 1.5) state.velocity.addScaledVector(forward, -43 * dt);
@@ -362,7 +378,7 @@ function updatePhysics(dt, now) {
   state.driftAngle = lerp(state.driftAngle, Math.atan2(lateralSpeed, Math.max(3, Math.abs(forwardSpeed))), 1 - Math.exp(-8 * dt));
 
   if (state.drifting && Math.abs(lateralSpeed) > 1.2) {
-    const gain = (6 + Math.abs(lateralSpeed) * 1.25) * dt;
+    const gain = (10 + Math.abs(lateralSpeed) * 1.8) * dt;
     state.nitro = Math.min(100, state.nitro + gain);
     state.driftScore += Math.abs(lateralSpeed) * speed * dt * 1.4;
     for (const index of [0, 1]) {
@@ -370,23 +386,15 @@ function updatePhysics(dt, now) {
       if (Math.random() < dt * 18) effects.addSkid(car.wheelWorldPosition(index), state.heading);
     }
   }
-  if (state.wasDrifting && !state.drifting) {
-    if (state.nitro >= 25 && active) {
-      state.boostTime = 0.65 + state.nitro / 100 * 1.6;
-      showToast(`氮气释放 · ${Math.round(state.driftScore)} 漂移分`);
-      state.nitro = 0;
-      state.driftScore = 0;
-    } else if (state.driftScore > 20) {
-      showToast(`漂移 ${Math.round(state.driftScore)} 分 · 蓄能不足`);
-      state.driftScore = 0;
-    }
+  if (state.wasDrifting && !state.drifting && state.driftScore > 20) {
+    showToast(state.nitro >= 25 ? `漂移 ${Math.round(state.driftScore)} 分 · SHIFT 可用` : `漂移 ${Math.round(state.driftScore)} 分`);
+    state.driftScore = 0;
   }
   state.wasDrifting = state.drifting;
-  state.boostTime = Math.max(0, state.boostTime - dt);
-  if (state.boostTime > 0) {
+  if (state.boosting) {
     const backward = forward.clone().negate();
-    for (const side of [-0.55, 0.55]) {
-      const exhaust = car.group.localToWorld(new THREE.Vector3(side, 0.34, -2.35));
+    for (const side of [-0.5, 0.5]) {
+      const exhaust = car.group.localToWorld(new THREE.Vector3(side, 0.335, -2.4));
       effects.emitNitro(exhaust, backward, speed);
     }
   }
@@ -419,6 +427,7 @@ function updatePhysics(dt, now) {
     if (state.collisionCooldown <= 0 && speed > 4) {
       state.collisionCooldown = 0.55;
       state.shake = Math.min(1.3, 0.35 + speed / 45);
+      state.boosting = false;
       effects.emitCollision(state.position.clone().addScaledVector(outward, 1).setY(0.45), outward.clone().negate());
       audio.impact();
       showToast('碰撞 · 速度受损', true);
@@ -437,12 +446,12 @@ function updatePhysics(dt, now) {
     steering: state.steering,
     driftAngle: state.driftAngle,
     braking,
-    boosting: state.boostTime > 0,
+    boosting: state.boosting,
     time: now / 1000,
   });
   track.update(now / 1000, speed * 3.6);
   effects.update(dt, state.position, speed * 3.6);
-  audio.update(speed, throttle, state.drifting, state.boostTime > 0, active);
+  audio.update(speed, throttle, state.drifting, state.boosting, active);
   updateHUD(speed, forwardSpeed, now, dt);
 }
 
@@ -464,9 +473,10 @@ function updateHUD(speed, forwardSpeed, now, dt) {
   }
   if (state.mode === 'racing') ui.lapTime.textContent = formatTime(now - state.lapStart - (state.pauseDuration || 0));
   ui.drift.classList.toggle('active', state.drifting || state.nitro > 0);
+  ui.drift.classList.toggle('boosting', state.boosting);
   ui.driftScore.textContent = `+${Math.round(state.driftScore)}`;
   ui.nitro.style.width = `${state.nitro}%`;
-  ui.speedLines.style.opacity = String(clamp((kmh - 85) / 210 + (state.boostTime > 0 ? 0.22 : 0), 0, 0.42));
+  ui.speedLines.style.opacity = String(clamp((kmh - 85) / 210 + (state.boosting ? 0.22 : 0), 0, 0.42));
   state.shake = Math.max(0, state.shake - dt * 2.1);
   ui.impact.style.opacity = String(Math.max(0, parseFloat(ui.impact.style.opacity || 0) - dt * 2.7));
   if (state.toastTimer > 0) {
@@ -490,8 +500,8 @@ function updateCamera(dt, now) {
     let desired;
     let look;
     if (state.cameraMode === 1) {
-      desired = state.position.clone().addScaledVector(forward, 0.25).add(new THREE.Vector3(0, 1.29, 0));
-      look = state.position.clone().addScaledVector(forward, 35).add(new THREE.Vector3(0, 0.75, 0));
+      desired = state.position.clone().addScaledVector(forward, 0.82).add(new THREE.Vector3(0, 0.96, 0));
+      look = state.position.clone().addScaledVector(forward, 35).add(new THREE.Vector3(0, 0.72, 0));
       camera.position.lerp(desired, 1 - Math.exp(-16 * dt));
     } else {
       const far = state.cameraMode === 2;
@@ -503,7 +513,7 @@ function updateCamera(dt, now) {
       camera.position.lerp(desired, 1 - Math.exp(-5.5 * dt));
     }
     cameraLook.lerp(look, 1 - Math.exp(-8 * dt));
-    const targetFov = state.cameraMode === 1 ? 69 + speed * 0.12 : 58 + speed * 0.17 + (state.boostTime > 0 ? 7 : 0);
+    const targetFov = state.cameraMode === 1 ? 69 + speed * 0.12 : 58 + speed * 0.17 + (state.boosting ? 7 : 0);
     camera.fov = lerp(camera.fov, Math.min(targetFov, 82), 1 - Math.exp(-3 * dt));
   }
   if (state.shake > 0) {
