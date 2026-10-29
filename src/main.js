@@ -7,6 +7,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { NeonTrack, TRACK_WIDTH } from './track.js';
 import { SportsCar } from './car.js';
 import { RacingEffects } from './effects.js';
+import { RivalManager } from './rivals.js';
 import './style.css';
 
 const $ = (selector) => document.querySelector(selector);
@@ -18,10 +19,11 @@ const ui = {
   pause: $('#pause-screen'), finish: $('#finish-screen'), wrongWay: $('#wrong-way'), minimap: $('#minimap'),
   touch: $('#touch-controls'), sound: $('#sound-btn'), rpm: $('#rpm'), context: $('#context-lost'),
   lapSplits: $('#lap-splits'), finishDrift: $('#finish-drift'), recordTotal: $('#record-total'),
-  finishLaps: $('#finish-laps'),
+  finishLaps: $('#finish-laps'), racePosition: $('#race-position'), raceTotal: $('#race-total'),
+  finishPosition: $('#finish-position'),
 };
 const rpmBars = [...ui.rpm.children];
-const hudCache = { speed: '', gear: '', lapTime: '', drift: '', nitro: '', speedLines: '', impact: '' };
+const hudCache = { speed: '', gear: '', lapTime: '', drift: '', nitro: '', speedLines: '', impact: '', position: '' };
 const GEAR_THRESHOLDS = [0, 32, 65, 102, 145, 195, 250];
 const clamp = THREE.MathUtils.clamp;
 const lerp = THREE.MathUtils.lerp;
@@ -79,6 +81,25 @@ const moonOffset = new THREE.Vector3(-60, 110, 35);
 const track = new NeonTrack(scene, { pointLights: quality.pointLights });
 const car = new SportsCar(scene);
 const effects = new RacingEffects(scene);
+const rivals = new RivalManager(scene, track, effects, {
+  laps: TOTAL_LAPS,
+  count: lowPower ? 3 : 5,
+  onWreck: (name) => {
+    showToast(`撞毁 ${name} · 对手出局`, true);
+    state.impactOpacity = 0.78;
+    ui.impact.style.opacity = '0.78';
+    state.shake = Math.min(1.3, 0.8 + state.velocity.length() / 45);
+    audio.impact();
+  },
+  onBump: (name) => {
+    showToast(`与 ${name} 发生碰撞 · 速度受损`, true);
+    state.impactOpacity = 0.6;
+    ui.impact.style.opacity = '0.6';
+    state.shake = Math.min(1.3, 0.5 + state.velocity.length() / 45);
+    audio.impact();
+  },
+});
+ui.raceTotal.textContent = String(rivals.totalCars);
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.52, 0.38, 0.9);
@@ -206,7 +227,7 @@ function saveRecord() {
     // 隐私模式或存储被禁用时忽略
   }
 }
-if (import.meta.env.DEV) window.__NEON_DEBUG__ = { scene, car, camera, state };
+if (import.meta.env.DEV) window.__NEON_DEBUG__ = { scene, car, camera, state, track, rivals, effects, renderer };
 let countdownStart = 0;
 let countdownValue = null;
 let previousTime = performance.now();
@@ -244,7 +265,7 @@ function showToast(text, impact = false) {
 
 function resetCar(fullReset = false) {
   const nearest = track.nearest(state.position, state.nearestIndex);
-  const frame = fullReset || state.nearestIndex < 0 ? track.frameAt(0.008) : nearest;
+  const frame = fullReset || state.nearestIndex < 0 ? track.frameAt(track.startT) : nearest;
   state.position.copy(frame.point);
   state.position.y = 0.02;
   state.heading = Math.atan2(frame.tangent.x, frame.tangent.z);
@@ -289,6 +310,8 @@ function startRace() {
   audio.init();
   effects.reset();
   resetCar(true);
+  rivals.reset();
+  hudCache.position = '';
   clearInput();
   ui.start.classList.add('hidden');
   ui.pause.classList.add('hidden');
@@ -396,8 +419,14 @@ function completeLap(now) {
   if (state.lap >= TOTAL_LAPS) {
     state.mode = 'finished';
     state.velocity.multiplyScalar(0.5);
+    const finalRank = rivals.playerRank(state.progress);
+    ui.racePosition.textContent = String(finalRank);
+    ui.finishPosition.textContent = `第 ${finalRank} 名 · ${rivals.totalCars} 车`;
     ui.finish.classList.remove('hidden');
     ui.touch.classList.add('hidden');
+    ui.toast.classList.remove('show');
+    ui.wrongWay.classList.add('hidden');
+    state.toastTimer = 0;
     const total = now - state.raceStart - (state.totalPause || 0);
     if (total < record.bestTotal) {
       record.bestTotal = total;
@@ -543,12 +572,12 @@ function updatePhysics(dt, now) {
     state.position.addScaledVector(collisionOutward, -(penetration + 0.025));
     const impactVelocity = state.velocity.dot(collisionOutward);
     if (impactVelocity > 0) state.velocity.addScaledVector(collisionOutward, -impactVelocity * 1.45);
-    state.velocity.multiplyScalar(state.collisionCooldown <= 0 ? 0.58 : Math.exp(-2.6 * dt));
+    state.velocity.multiplyScalar(state.collisionCooldown <= 0 ? 0.68 : Math.exp(-2.6 * dt));
     const trackDirection = Math.sign(forward.dot(nearest.tangent)) || 1;
     const desiredHeading = Math.atan2(nearest.tangent.x * trackDirection, nearest.tangent.z * trackDirection);
     let angleDelta = desiredHeading - state.heading;
     angleDelta = Math.atan2(Math.sin(angleDelta), Math.cos(angleDelta));
-    state.heading += angleDelta * dt * 3.5;
+    state.heading += angleDelta * dt * 2.8;
     if (state.collisionCooldown <= 0 && speed > 4) {
       state.collisionCooldown = 0.55;
       state.shake = Math.min(1.3, 0.35 + speed / 45);
@@ -578,7 +607,6 @@ function updatePhysics(dt, now) {
     boosting: state.boosting,
     time: now / 1000,
   });
-  track.update(now / 1000, speed * 3.6);
   effects.update(dt, state.position, speed * 3.6);
   audio.update(speed, throttle, state.drifting, state.boosting, active);
   updateHUD(speed, forwardSpeed, now, dt);
@@ -624,6 +652,13 @@ function updateHUD(speed, forwardSpeed, now, dt) {
   if (nitroText !== hudCache.nitro) {
     ui.nitro.style.width = nitroText;
     hudCache.nitro = nitroText;
+  }
+  if (state.mode === 'racing' || state.mode === 'countdown') {
+    const rankText = String(rivals.playerRank(state.progress));
+    if (rankText !== hudCache.position) {
+      ui.racePosition.textContent = rankText;
+      hudCache.position = rankText;
+    }
   }
   const lineOpacity = reducedMotion ? 0 : clamp((kmh - 85) / 210 + (state.boosting ? 0.22 : 0), 0, 0.42);
   const lineText = lineOpacity.toFixed(3);
@@ -737,6 +772,14 @@ function drawMinimap() {
   const ctx = mapContext;
   ctx.clearRect(0, 0, ui.minimap.width, ui.minimap.height);
   ctx.drawImage(mapBase, 0, 0);
+  for (const rival of rivals.rivals) {
+    if (rival.wrecked || !rival.car.group.visible) continue;
+    const [rx, ry] = mapPoint(rival.position);
+    ctx.fillStyle = rival.mapColor;
+    ctx.beginPath();
+    ctx.arc(rx, ry, 3.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
   const [x, y] = mapPoint(state.position);
   ctx.save(); ctx.translate(x, y); ctx.rotate(Math.PI - state.heading);
   ctx.shadowColor = '#54eaff'; ctx.shadowBlur = 14;
@@ -753,6 +796,7 @@ function animate(now) {
   if (state.mode === 'countdown' || !ui.countdown.classList.contains('hidden')) updateCountdown(now);
   if (state.mode !== 'paused') updatePhysics(dt, now);
   else audio.update(0, 0, false, false, false);
+  if (state.mode === 'racing') rivals.update(dt, now / 1000, state);
   updateCamera(dt, now);
   if (!ui.hud.classList.contains('hidden')) drawMinimap();
   composer.render();

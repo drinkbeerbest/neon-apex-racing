@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
-export const TRACK_WIDTH = 17;
-export const TRACK_SAMPLES = 900;
+export const TRACK_WIDTH = 19;
+export const TRACK_SAMPLES = 1400;
 const SAMPLE_COUNT = TRACK_SAMPLES;
 
 function seededRandom(seed = 42) {
@@ -101,22 +101,32 @@ export class NeonTrack {
     this.group = new THREE.Group();
     scene.add(this.group);
     this.curve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(0, 0, 108),
-      new THREE.Vector3(62, 0, 103),
-      new THREE.Vector3(117, 0, 70),
-      new THREE.Vector3(137, 0, 12),
-      new THREE.Vector3(115, 0, -52),
-      new THREE.Vector3(65, 0, -94),
-      new THREE.Vector3(0, 0, -108),
-      new THREE.Vector3(-70, 0, -94),
-      new THREE.Vector3(-124, 0, -53),
-      new THREE.Vector3(-139, 0, 10),
-      new THREE.Vector3(-108, 0, 67),
-      new THREE.Vector3(-55, 0, 99),
-    ], true, 'catmullrom', 0.32);
+      new THREE.Vector3(0, 0, 150),
+      new THREE.Vector3(70, 0, 148),
+      new THREE.Vector3(125, 0, 120),
+      new THREE.Vector3(160, 0, 80),
+      new THREE.Vector3(180, 0, 35),
+      new THREE.Vector3(195, 0, -15),
+      new THREE.Vector3(185, 0, -65),
+      new THREE.Vector3(155, 0, -100),
+      new THREE.Vector3(145, 0, -130),
+      new THREE.Vector3(105, 0, -155),
+      new THREE.Vector3(55, 0, -165),
+      new THREE.Vector3(0, 0, -160),
+      new THREE.Vector3(-55, 0, -145),
+      new THREE.Vector3(-105, 0, -115),
+      new THREE.Vector3(-150, 0, -95),
+      new THREE.Vector3(-180, 0, -60),
+      new THREE.Vector3(-195, 0, -10),
+      new THREE.Vector3(-190, 0, 45),
+      new THREE.Vector3(-175, 0, 85),
+      new THREE.Vector3(-150, 0, 125),
+      new THREE.Vector3(-100, 0, 148),
+      new THREE.Vector3(-50, 0, 150),
+    ], true, 'centripetal');
     this.length = this.curve.getLength();
+    this.startT = Math.min(0.03, 10 / this.length);
     this.samples = [];
-    this.flowMaterials = [];
     for (let i = 0; i < SAMPLE_COUNT; i++) {
       const t = i / SAMPLE_COUNT;
       const point = this.curve.getPointAt(t);
@@ -222,19 +232,20 @@ export class NeonTrack {
     }));
     road.receiveShadow = true;
 
-    const edgeCyan = new THREE.MeshBasicMaterial({ color: 0x39ddef, toneMapped: false });
-    const edgePink = new THREE.MeshBasicMaterial({ color: 0xff276f, toneMapped: false });
-    this.createRibbon(-TRACK_WIDTH / 2 + 0.34, 0.105, 0.025, edgeCyan);
-    this.createRibbon(TRACK_WIDTH / 2 - 0.34, 0.105, 0.025, edgePink);
+    const edgeCyan = new THREE.MeshBasicMaterial({ color: 0x30cde2, toneMapped: false });
+    const edgePink = new THREE.MeshBasicMaterial({ color: 0xf02f70, toneMapped: false });
+    this.createRibbon(-TRACK_WIDTH / 2 + 0.3, 0.18, 0.025, edgeCyan);
+    this.createRibbon(TRACK_WIDTH / 2 - 0.3, 0.18, 0.025, edgePink);
 
-    const laneMaterial = new THREE.MeshBasicMaterial({ color: 0x7d8a91, transparent: true, opacity: 0.42 });
-    const dashGeometry = new THREE.BoxGeometry(0.1, 0.012, 2.8);
-    const dashes = new THREE.InstancedMesh(dashGeometry, laneMaterial, 150);
+    const laneMaterial = new THREE.MeshBasicMaterial({ color: 0xdce9ee, transparent: true, opacity: 0.36, depthWrite: false });
+    const dashGeometry = new THREE.BoxGeometry(0.12, 0.012, 3.2);
+    const dashes = new THREE.InstancedMesh(dashGeometry, laneMaterial, 200);
     const dummy = new THREE.Object3D();
+    const laneOffsets = [-TRACK_WIDTH / 6, TRACK_WIDTH / 6];
     let n = 0;
-    for (let i = 0; i < 75; i++) {
-      const { point, tangent, normal } = this.frameAt(i / 75);
-      for (const offset of [-2.85, 2.85]) {
+    for (let i = 0; i < 100; i++) {
+      const { point, tangent, normal } = this.frameAt(i / 100);
+      for (const offset of laneOffsets) {
         dummy.position.copy(point).addScaledVector(normal, offset);
         dummy.position.y = 0.027;
         dummy.rotation.set(0, Math.atan2(tangent.x, tangent.z), 0);
@@ -243,37 +254,6 @@ export class NeonTrack {
       }
     }
     this.group.add(dashes);
-
-    for (const [offset, color, phase] of [[-5.8, 0x32cdea, 0], [5.8, 0xff347c, 0.5], [0, 0x4b92b7, 0.25]]) {
-      const material = new THREE.ShaderMaterial({
-        uniforms: {
-          uTime: { value: 0 },
-          uSpeed: { value: 0 },
-          uColor: { value: new THREE.Color(color) },
-          uPhase: { value: phase },
-        },
-        vertexShader: `varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
-        fragmentShader: `
-          varying vec2 vUv; uniform float uTime; uniform float uSpeed; uniform float uPhase; uniform vec3 uColor;
-          void main(){
-            float wave=sin((vUv.y*.34-uTime*(.8+uSpeed*.018)+uPhase)*6.28318)*.5+.5;
-            float dash=smoothstep(.72,.96,wave);
-            float edge=smoothstep(0.,.22,vUv.x)*smoothstep(1.,.78,vUv.x);
-            gl_FragColor=vec4(uColor*(1.2+uSpeed*.008),dash*edge*(.15+uSpeed*.0025));
-          }`,
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        toneMapped: false,
-      });
-      this.flowMaterials.push(material);
-      this.createRibbon(offset, offset === 0 ? 0.055 : 0.085, 0.035, material);
-    }
-
-    const wetMaterial = new THREE.MeshBasicMaterial({
-      color: 0x4fbbd2, transparent: true, opacity: 0.035, blending: THREE.AdditiveBlending, depthWrite: false,
-    });
-    for (const offset of [-6.8, -1.5, 1.5, 6.8]) this.createRibbon(offset, 0.7, 0.018, wetMaterial);
   }
 
   buildBarriers() {
@@ -398,7 +378,7 @@ export class NeonTrack {
       const buildings = new THREE.InstancedMesh(buildingGeo, material, 65);
       for (let i = 0; i < 65; i++) {
         const angle = rand() * Math.PI * 2;
-        const radius = 175 + rand() * 280;
+        const radius = 280 + rand() * 220;
         const width = 8 + rand() * 20;
         const depth = 8 + rand() * 20;
         const height = 20 + Math.pow(rand(), 1.8) * 120;
@@ -473,7 +453,7 @@ export class NeonTrack {
       const { point, tangent, normal } = this.frameAt(t);
       const group = new THREE.Group();
       group.position.copy(point).addScaledVector(normal, side * 18);
-      group.rotation.y = Math.atan2(tangent.x, tangent.z) + (side > 0 ? Math.PI : 0);
+      group.rotation.y = Math.atan2(-tangent.z * side, tangent.x * side);
       const panel = new THREE.Mesh(
         new THREE.PlaneGeometry(9, 2.25),
         new THREE.MeshBasicMaterial({ map: makeSignTexture(text, sub, color), side: THREE.DoubleSide, toneMapped: false })
@@ -490,10 +470,4 @@ export class NeonTrack {
     }
   }
 
-  update(time, speed) {
-    for (const material of this.flowMaterials) {
-      material.uniforms.uTime.value = time;
-      material.uniforms.uSpeed.value = speed;
-    }
-  }
 }

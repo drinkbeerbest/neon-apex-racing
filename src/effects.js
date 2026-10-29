@@ -171,6 +171,26 @@ export class RacingEffects {
     }
   }
 
+  emitWreck(position) {
+    for (let i = 0; i < 56; i++) {
+      this.tmpPosition.copy(position);
+      this.tmpPosition.x += (Math.random() - 0.5) * 1.8;
+      this.tmpPosition.y += Math.random() * 1.2;
+      this.tmpPosition.z += (Math.random() - 0.5) * 1.8;
+      this.tmpVelocity.set((Math.random() - 0.5) * 20, 4 + Math.random() * 12, (Math.random() - 0.5) * 20);
+      this.sparkColor.setHSL(0.04 + Math.random() * 0.06, 1, 0.55 + Math.random() * 0.35);
+      this.sparks.emit(this.tmpPosition, this.tmpVelocity, 0.3 + Math.random() * 0.9, this.sparkColor);
+    }
+    for (let i = 0; i < 18; i++) {
+      this.tmpPosition.copy(position);
+      this.tmpPosition.x += (Math.random() - 0.5) * 2.4;
+      this.tmpPosition.y += Math.random() * 1.4;
+      this.tmpPosition.z += (Math.random() - 0.5) * 2.4;
+      this.tmpVelocity.set((Math.random() - 0.5) * 4, 0.5 + Math.random() * 1.6, (Math.random() - 0.5) * 4);
+      this.smoke.emit(this.tmpPosition, this.tmpVelocity, 1.1 + Math.random() * 1.2, this.smokeColor);
+    }
+  }
+
   emitNitro(position, backward, speed) {
     for (let i = 0; i < 2; i++) {
       this.tmpVelocity.copy(backward).multiplyScalar(9 + Math.random() * 8 + speed * 0.08);

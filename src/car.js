@@ -206,7 +206,9 @@ function addBeam(parent, start, end, thickness, depth, material) {
 }
 
 export class SportsCar {
-  constructor(scene) {
+  constructor(scene, { paintColor = 0xa60b27, isAI = false } = {}) {
+    this.paintColor = paintColor;
+    this.isAI = isAI;
     this.group = new THREE.Group();
     this.visual = new THREE.Group();
     this.group.add(this.visual);
@@ -216,6 +218,9 @@ export class SportsCar {
     this.nitroFlames = [];
     this.wheelRadius = 0.43;
     this.build();
+    if (this.isAI) {
+      this.group.traverse((object) => { if (object.isMesh) object.castShadow = false; });
+    }
   }
 
   addMesh(geometry, material, position, parent = this.visual, shadow = true) {
@@ -229,17 +234,17 @@ export class SportsCar {
 
   build() {
     const paint = new THREE.MeshPhysicalMaterial({
-      color: 0xa60b27,
+      color: this.paintColor,
       metalness: 0.72,
       roughness: 0.17,
       clearcoat: 1,
       clearcoatRoughness: 0.09,
       envMapIntensity: 1.55,
-      emissive: 0x180005,
+      emissive: new THREE.Color(this.paintColor).multiplyScalar(0.05),
       emissiveIntensity: 0.2,
     });
     const paintDark = paint.clone();
-    paintDark.color.setHex(0x3b050e);
+    paintDark.color.set(this.paintColor).multiplyScalar(0.28);
     paintDark.metalness = 0.55;
     const carbon = new THREE.MeshPhysicalMaterial({
       color: 0x090c10,
@@ -543,18 +548,20 @@ export class SportsCar {
     this.buildWheels(paint, carbon, darkMetal, black, chrome);
     this.buildArchLips(paint, black);
 
-    for (const side of [-1, 1]) {
-      const light = new THREE.SpotLight(0xb9efff, 148, 68, 0.34, 0.68, 1.35);
-      light.position.set(side * 0.55, 0.6, 2.12);
-      light.target.position.set(side * 0.45, -0.65, 34);
-      this.group.add(light, light.target);
+    if (!this.isAI) {
+      for (const side of [-1, 1]) {
+        const light = new THREE.SpotLight(0xb9efff, 148, 68, 0.34, 0.68, 1.35);
+        light.position.set(side * 0.55, 0.6, 2.12);
+        light.target.position.set(side * 0.45, -0.65, 34);
+        this.group.add(light, light.target);
+      }
+      this.boostLight = new THREE.PointLight(0x3de7ff, 0, 4.6, 2);
+      this.boostLight.position.set(0, 0.35, -2.5);
+      this.group.add(this.boostLight);
+      const underglow = new THREE.PointLight(0x1d9dc6, 5, 4.2, 2);
+      underglow.position.set(0, 0.16, 0);
+      this.group.add(underglow);
     }
-    this.boostLight = new THREE.PointLight(0x3de7ff, 0, 4.6, 2);
-    this.boostLight.position.set(0, 0.35, -2.5);
-    this.group.add(this.boostLight);
-    const underglow = new THREE.PointLight(0x1d9dc6, 5, 4.2, 2);
-    underglow.position.set(0, 0.16, 0);
-    this.group.add(underglow);
 
     const shadowCanvas = document.createElement('canvas');
     shadowCanvas.width = shadowCanvas.height = 128;
@@ -680,7 +687,7 @@ export class SportsCar {
         flame.material.opacity = 0.55 + Math.random() * 0.4;
       }
     }
-    this.boostLight.intensity = boosting ? 3.5 + Math.random() * 2 : 0;
+    if (this.boostLight) this.boostLight.intensity = boosting ? 3.5 + Math.random() * 2 : 0;
   }
 
   wheelWorldPosition(index, target = new THREE.Vector3()) {
