@@ -9,6 +9,7 @@ test-results/
 
 # Local workspace data
 .workbuddy/
+.trae-html-share-packages/
 
 # Environment and local files
 .env

@@ -38,12 +38,6 @@ npm run build
 npm run preview
 ```
 
-冒烟验证（需先启动开发服务器并安装 Chrome）：
-
-```bash
-npm run verify
-```
-
 ## 操作
 
 - `W` / `S` 或 `↑` / `↓`：油门、制动与倒车
