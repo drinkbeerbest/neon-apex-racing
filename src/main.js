@@ -83,7 +83,7 @@ const car = new SportsCar(scene);
 const effects = new RacingEffects(scene);
 const rivals = new RivalManager(scene, track, effects, {
   laps: TOTAL_LAPS,
-  count: lowPower ? 3 : 5,
+  count: lowPower ? 4 : 7,
   onWreck: (name) => {
     showToast(`撞毁 ${name} · 对手出局`, true);
     state.impactOpacity = 0.78;
@@ -777,7 +777,7 @@ function drawMinimap() {
     const [rx, ry] = mapPoint(rival.position);
     ctx.fillStyle = rival.mapColor;
     ctx.beginPath();
-    ctx.arc(rx, ry, 3.6, 0, Math.PI * 2);
+    ctx.arc(rx, ry, 3.2, 0, Math.PI * 2);
     ctx.fill();
   }
   const [x, y] = mapPoint(state.position);

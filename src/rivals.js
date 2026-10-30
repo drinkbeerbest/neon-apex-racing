@@ -2,11 +2,13 @@ import * as THREE from 'three';
 import { SportsCar } from './car.js';
 
 const RIVAL_SETUPS = [
-  { name: 'AKIRA', color: 0x1f5de0, lane: -4.6, grid: 9, speed: 44, phase: 0.4 },
-  { name: 'RYU', color: 0xd9a410, lane: 4.6, grid: 13, speed: 42, phase: 1.9 },
-  { name: 'MIRA', color: 0x14a06a, lane: 0, grid: 19, speed: 46, phase: 3.2 },
-  { name: 'KAI', color: 0x8a4cf0, lane: -4.6, grid: 23, speed: 40, phase: 4.6 },
-  { name: 'ZERO', color: 0xcfd6df, lane: 4.6, grid: 27, speed: 38, phase: 5.8 },
+  { name: 'AKIRA', variant: 'muscle', color: 0x1f5de0, accent: 0xeef2f6, lane: -4.5, grid: 12, speed: 45, phase: 0.4, weave: 0.55, wobble: 1.1, corner: 0.82 },
+  { name: 'RYU', variant: 'hyper', color: 0xd9a410, accent: 0x121418, lane: 4.6, grid: 16, speed: 48, phase: 1.9, weave: 0.8, wobble: 1.3, corner: 0.8 },
+  { name: 'MIRA', variant: 'roadster', color: 0x14a06a, accent: 0xf3e9d2, lane: 0, grid: 20, speed: 42, phase: 3.2, weave: 0.95, wobble: 0.9, corner: 0.84 },
+  { name: 'KAI', variant: 'prototype', color: 0x8a4cf0, accent: 0x59edff, lane: -4.7, grid: 24, speed: 49, phase: 4.6, weave: 0.5, wobble: 1.2, corner: 0.79 },
+  { name: 'ZERO', variant: 'rally', color: 0x6f7d8c, accent: 0xff2f70, lane: 4.7, grid: 28, speed: 41, phase: 5.8, weave: 0.9, wobble: 1.4, corner: 0.85 },
+  { name: 'NOVA', variant: 'formula', color: 0xff5a1f, accent: 0x111317, lane: -0.6, grid: 32, speed: 47, phase: 7.1, weave: 0.7, wobble: 1.0, corner: 0.81 },
+  { name: 'VEGA', variant: 'targa', color: 0xe8e9ec, accent: 0xff4b8b, lane: 2.6, grid: 36, speed: 44, phase: 8.4, weave: 1.05, wobble: 0.8, corner: 0.83 },
 ];
 const ZERO_VELOCITY = new THREE.Vector3();
 const clamp = THREE.MathUtils.clamp;
@@ -22,10 +24,10 @@ export class RivalManager {
     this.contact = new THREE.Vector3();
     this.normal = new THREE.Vector3();
     this.rivals = RIVAL_SETUPS.slice(0, Math.min(count, RIVAL_SETUPS.length)).map((config) => {
-      const car = new SportsCar(scene, { paintColor: config.color, isAI: true });
+      const car = new SportsCar(scene, { variant: config.variant, paintColor: config.color, accentColor: config.accent, isAI: true });
       return {
         config, car, position: new THREE.Vector3(), t: 0, lane: 0, baseLane: 0, prevLane: 0,
-        speed: 0, targetSpeed: 0, progress: 0, cooldown: 0, wrecked: false, finished: false,
+        speed: 0, targetSpeed: 0, progress: 0, spawnProgress: 0, cooldown: 0, wrecked: false, finished: false,
         wreckTimer: 0, wreckSpin: 0, wreckTilt: 1, hideTimer: 0,
         mapColor: `#${config.color.toString(16).padStart(6, '0')}`,
       };
@@ -36,8 +38,8 @@ export class RivalManager {
 
   reset() {
     for (const rival of this.rivals) {
-      rival.t = this.track.startT + rival.config.grid / this.track.length;
-      rival.progress = rival.t;
+      rival.t = ((this.track.startT + rival.config.grid / this.track.length) % 1);
+      rival.spawnProgress = rival.progress = rival.t;
       rival.lane = rival.baseLane = rival.prevLane = rival.config.lane;
       rival.speed = 0;
       rival.targetSpeed = 0;
@@ -81,16 +83,22 @@ export class RivalManager {
       const current = this.track.frameAt(rival.t);
       const ahead = this.track.frameAt(rival.t + 0.015);
       const straightness = clamp(current.tangent.dot(ahead.tangent), 0, 1);
-      const base = rival.config.speed * (0.76 + 0.24 * straightness);
-      const gap = rival.progress - playerState.progress;
-      const rubber = clamp(1 - gap * 0.6, 0.78, 1.05);
-      const wobble = Math.sin(time * 0.85 + rival.config.phase) * 1.2;
+      const cornerSpeed = rival.config.corner ?? 0.8;
+      const base = rival.config.speed * (cornerSpeed + (1 - cornerSpeed) * straightness);
+      const rivalCovered = rival.progress - rival.spawnProgress;
+      const playerCovered = playerState.progress - (playerState.startProgress || 0);
+      const gap = rivalCovered - playerCovered;
+      const rubber = clamp(1 - gap * 0.75, 0.8, 1.08);
+      const wobble = Math.sin(time * 0.85 + rival.config.phase) * rival.config.wobble;
       rival.targetSpeed = Math.max(18, base * rubber + wobble);
-      rival.speed = lerp(rival.speed, rival.targetSpeed, 1 - Math.exp(-1.3 * dt));
+      rival.speed = lerp(rival.speed, rival.targetSpeed, 1 - Math.exp(-1.35 * dt));
       const step = rival.speed * dt / this.track.length;
       rival.t = (rival.t + step) % 1;
       rival.progress += step;
-      rival.lane = rival.baseLane + Math.sin(time * 0.55 + rival.config.phase) * 0.45;
+      rival.lane = clamp(
+        rival.baseLane + Math.sin(time * 0.52 + rival.config.phase) * rival.config.weave,
+        -5.3, 5.3
+      );
       const frame = this.track.frameAt(rival.t);
       rival.position.copy(frame.point).addScaledVector(frame.normal, rival.lane);
       rival.position.y = 0.02;
