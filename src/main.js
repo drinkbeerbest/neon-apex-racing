@@ -536,6 +536,10 @@ function updatePhysics(dt, now) {
       if (Math.random() < dt * 18) effects.addSkid(wheelScratch, state.heading);
     }
   }
+  if (active && !state.drifting && !state.boosting && state.velocity.length() > 4) {
+    // 正常行驶时的氮气缓慢回充
+    state.nitro = Math.min(100, state.nitro + 2.2 * dt);
+  }
   if (state.wasDrifting && !state.drifting && state.driftScore > 20) {
     state.driftTotal += state.driftScore;
     showToast(state.nitro >= 25 ? `漂移 ${Math.round(state.driftScore)} 分 · SHIFT 可用` : `漂移 ${Math.round(state.driftScore)} 分`);
