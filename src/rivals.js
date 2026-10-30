@@ -2,13 +2,13 @@ import * as THREE from 'three';
 import { SportsCar } from './car.js';
 
 const RIVAL_SETUPS = [
-  { name: 'AKIRA', variant: 'muscle', color: 0x1f5de0, accent: 0xeef2f6, lane: -4.5, grid: 12, speed: 52, phase: 0.4, weave: 0.55, wobble: 1.1, corner: 0.86 },
-  { name: 'RYU', variant: 'hyper', color: 0xd9a410, accent: 0x121418, lane: 4.6, grid: 16, speed: 56, phase: 1.9, weave: 0.8, wobble: 1.3, corner: 0.84 },
-  { name: 'MIRA', variant: 'roadster', color: 0x14a06a, accent: 0xf3e9d2, lane: 0, grid: 20, speed: 49, phase: 3.2, weave: 0.95, wobble: 0.9, corner: 0.88 },
-  { name: 'KAI', variant: 'prototype', color: 0x8a4cf0, accent: 0x59edff, lane: -4.7, grid: 24, speed: 57, phase: 4.6, weave: 0.5, wobble: 1.2, corner: 0.83 },
-  { name: 'ZERO', variant: 'rally', color: 0x6f7d8c, accent: 0xff2f70, lane: 4.7, grid: 28, speed: 48, phase: 5.8, weave: 0.9, wobble: 1.4, corner: 0.89 },
-  { name: 'NOVA', variant: 'formula', color: 0xff5a1f, accent: 0x111317, lane: -0.6, grid: 32, speed: 55, phase: 7.1, weave: 0.7, wobble: 1.0, corner: 0.85 },
-  { name: 'VEGA', variant: 'targa', color: 0xe8e9ec, accent: 0xff4b8b, lane: 2.6, grid: 36, speed: 51, phase: 8.4, weave: 1.05, wobble: 0.8, corner: 0.87 },
+  { name: 'AKIRA', variant: 'muscle', color: 0x1f5de0, accent: 0xeef2f6, lane: -4.5, grid: 12, speed: 54, phase: 0.4, weave: 0.55, wobble: 1.1, corner: 0.87 },
+  { name: 'RYU', variant: 'hyper', color: 0xd9a410, accent: 0x121418, lane: 4.6, grid: 16, speed: 58, phase: 1.9, weave: 0.8, wobble: 1.3, corner: 0.85 },
+  { name: 'MIRA', variant: 'roadster', color: 0x14a06a, accent: 0xf3e9d2, lane: 0, grid: 20, speed: 51, phase: 3.2, weave: 0.95, wobble: 0.9, corner: 0.89 },
+  { name: 'KAI', variant: 'prototype', color: 0x8a4cf0, accent: 0x59edff, lane: -4.7, grid: 24, speed: 59, phase: 4.6, weave: 0.5, wobble: 1.2, corner: 0.84 },
+  { name: 'ZERO', variant: 'rally', color: 0x6f7d8c, accent: 0xff2f70, lane: 4.7, grid: 28, speed: 50, phase: 5.8, weave: 0.9, wobble: 1.4, corner: 0.9 },
+  { name: 'NOVA', variant: 'formula', color: 0xff5a1f, accent: 0x111317, lane: -0.6, grid: 32, speed: 57, phase: 7.1, weave: 0.7, wobble: 1.0, corner: 0.86 },
+  { name: 'VEGA', variant: 'targa', color: 0xe8e9ec, accent: 0xff4b8b, lane: 2.6, grid: 36, speed: 53, phase: 8.4, weave: 1.05, wobble: 0.8, corner: 0.88 },
 ];
 const ZERO_VELOCITY = new THREE.Vector3();
 const clamp = THREE.MathUtils.clamp;
@@ -88,10 +88,10 @@ export class RivalManager {
       const rivalCovered = rival.progress - rival.spawnProgress;
       const playerCovered = playerState.progress - (playerState.startProgress || 0);
       const gap = rivalCovered - playerCovered;
-      const rubber = clamp(1 - gap * 0.6, 0.86, 1.13);
+      const rubber = clamp(1 - gap * 0.55, 0.88, 1.15);
       const wobble = Math.sin(time * 0.85 + rival.config.phase) * rival.config.wobble;
       rival.targetSpeed = Math.max(18, base * rubber + wobble);
-      rival.speed = lerp(rival.speed, rival.targetSpeed, 1 - Math.exp(-1.7 * dt));
+      rival.speed = lerp(rival.speed, rival.targetSpeed, 1 - Math.exp(-1.8 * dt));
       const step = rival.speed * dt / this.track.length;
       rival.t = (rival.t + step) % 1;
       rival.progress += step;
