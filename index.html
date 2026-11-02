@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#05070d" />
-    <meta name="description" content="NEON APEX 霓虹顶点——驾驶独特跑车，在雨夜霓虹环线与多辆 AI 赛车漂移竞速。" />
+    <meta name="description" content="NEON APEX 霓虹顶点——三条可切换赛道，驾驶独特跑车与多辆 AI 赛车在霓虹夜色中漂移竞速。" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23050b14'/%3E%3Cpath d='M12 46 25 16h9L21 46zm21 0 13-30h8L41 46z' fill='%2354eaff'/%3E%3C/svg%3E" />
     <title>NEON APEX — 霓虹环线</title>
   </head>
@@ -38,7 +38,11 @@
           <div class="eyebrow"><span></span> NIGHT RACING EXPERIENCE</div>
           <h1>NEON<br/><em>APEX</em></h1>
           <p class="cn-title">霓 虹 顶 点</p>
-          <p class="hero-description">穿过雨夜，压住弯心。<br/>在东京湾环线，跑出你的完美一圈。</p>
+          <p id="hero-description" class="hero-description">穿过雨夜，压住弯心。<br/>在东京湾环线，跑出你的完美一圈。</p>
+          <div class="track-picker">
+            <div class="track-picker-head"><span>赛道选择</span><small>SELECT CIRCUIT</small></div>
+            <div id="track-options" class="track-options" role="group" aria-label="选择赛道"></div>
+          </div>
           <button id="start-btn" class="primary-button">
             <span>点火出发</span>
             <svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
@@ -55,7 +59,7 @@
           <div class="control-row"><div><kbd>C</kbd><kbd>R</kbd></div><span>视角 / 重置</span></div>
           <p><span class="cyan-dot"></span>漂移快速蓄能，正常行驶也会缓慢回充；按住 Shift 喷射加速。</p>
         </aside>
-        <div class="start-footer"><span>01 / TOKYO BAY</span><span>23:48 &nbsp; · &nbsp; 18°C &nbsp; · &nbsp; WET</span></div>
+        <div class="start-footer"><span id="track-footer-code">01 / TOKYO BAY · 1.14 KM</span><span id="track-footer-weather">23:48 &nbsp; · &nbsp; 18°C &nbsp; · &nbsp; WET</span></div>
       </main>
 
       <section id="hud" class="hud hidden" aria-label="比赛信息">
@@ -94,6 +98,7 @@
           <p>引擎已待命，随时回到赛道。</p>
           <button id="resume-btn" class="primary-button"><span>继续比赛</span></button>
           <button id="restart-btn" class="text-button">重新开始</button>
+          <button id="change-track-btn" class="text-button">更换赛道</button>
         </div>
       </section>
 
@@ -109,6 +114,7 @@
           <div class="finish-best"><span>漂移总分</span><b id="finish-drift">0</b></div>
           <div class="finish-splits"><span>分段圈速</span><ol id="lap-splits"></ol></div>
           <button id="race-again-btn" class="primary-button"><span>再次挑战</span></button>
+          <button id="change-track-finish-btn" class="text-button">更换赛道</button>
         </div>
       </section>
 

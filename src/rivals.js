@@ -58,6 +58,11 @@ export class RivalManager {
     }
   }
 
+  setTrack(track) {
+    this.track = track;
+    this.reset();
+  }
+
   place(rival) {
     const frame = this.track.frameAt(rival.t);
     rival.position.copy(frame.point).addScaledVector(frame.normal, rival.lane);

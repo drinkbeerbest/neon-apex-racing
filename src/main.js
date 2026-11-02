@@ -4,7 +4,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { NeonTrack, TRACK_WIDTH } from './track.js';
+import { NeonTrack, TRACK_WIDTH, TRACK_SCENES } from './track.js';
 import { SportsCar } from './car.js';
 import { RacingEffects } from './effects.js';
 import { RivalManager } from './rivals.js';
@@ -20,7 +20,9 @@ const ui = {
   touch: $('#touch-controls'), sound: $('#sound-btn'), rpm: $('#rpm'), context: $('#context-lost'),
   lapSplits: $('#lap-splits'), finishDrift: $('#finish-drift'), recordTotal: $('#record-total'),
   finishLaps: $('#finish-laps'), racePosition: $('#race-position'), raceTotal: $('#race-total'),
-  finishPosition: $('#finish-position'),
+  finishPosition: $('#finish-position'), heroDescription: $('#hero-description'),
+  trackOptions: $('#track-options'), trackFooterCode: $('#track-footer-code'),
+  trackFooterWeather: $('#track-footer-weather'),
 };
 const rpmBars = [...ui.rpm.children];
 const hudCache = { speed: '', gear: '', lapTime: '', drift: '', nitro: '', speedLines: '', impact: '', position: '' };
@@ -77,8 +79,25 @@ const rimLight = new THREE.DirectionalLight(0xff3686, 0.85);
 rimLight.position.set(80, 25, -90);
 scene.add(rimLight);
 const moonOffset = new THREE.Vector3(-60, 110, 35);
+const TRACK_STORAGE_KEY = 'neon-apex-track-v1';
 
-const track = new NeonTrack(scene, { pointLights: quality.pointLights });
+function loadTrackSelection() {
+  try {
+    const id = localStorage.getItem(TRACK_STORAGE_KEY);
+    return TRACK_SCENES[id] ? id : 'tokyo';
+  } catch {
+    return 'tokyo';
+  }
+}
+function saveTrackSelection(sceneId) {
+  try {
+    localStorage.setItem(TRACK_STORAGE_KEY, sceneId);
+  } catch {
+    // 隐私模式下忽略
+  }
+}
+
+let track = new NeonTrack(scene, { sceneId: loadTrackSelection(), pointLights: quality.pointLights });
 const car = new SportsCar(scene);
 const effects = new RacingEffects(scene);
 const rivals = new RivalManager(scene, track, effects, {
@@ -196,7 +215,7 @@ const keyMap = {
   ShiftLeft: 'boost', ShiftRight: 'boost',
 };
 const RECORD_KEY = 'neon-apex-record-v1';
-const record = loadRecord();
+let record = loadRecord(track.sceneId);
 let touchUI = isTouch;
 const state = {
   mode: 'intro', position: new THREE.Vector3(), velocity: new THREE.Vector3(), heading: 0,
@@ -206,9 +225,12 @@ const state = {
   cameraMode: 0, wrongWayTime: 0, toastTimer: 0, elapsed: 0, impactOpacity: 0,
 };
 
-function loadRecord() {
+function loadRecord(sceneId) {
   try {
-    const data = JSON.parse(localStorage.getItem(RECORD_KEY) || '{}');
+    const key = `${RECORD_KEY}:${sceneId}`;
+    let raw = localStorage.getItem(key);
+    if (!raw && sceneId === 'tokyo') raw = localStorage.getItem(RECORD_KEY);
+    const data = JSON.parse(raw || '{}');
     return {
       bestLap: Number.isFinite(data.bestLap) ? data.bestLap : Infinity,
       bestTotal: Number.isFinite(data.bestTotal) ? data.bestTotal : Infinity,
@@ -219,7 +241,7 @@ function loadRecord() {
 }
 function saveRecord() {
   try {
-    localStorage.setItem(RECORD_KEY, JSON.stringify({
+    localStorage.setItem(`${RECORD_KEY}:${track.sceneId}`, JSON.stringify({
       bestLap: Number.isFinite(record.bestLap) ? record.bestLap : null,
       bestTotal: Number.isFinite(record.bestTotal) ? record.bestTotal : null,
     }));
@@ -302,15 +324,142 @@ function resetCar(fullReset = false) {
 ui.lapTotal.textContent = String(TOTAL_LAPS);
 ui.finishLaps.textContent = `${TOTAL_LAPS} LAPS`;
 resetCar(true);
-camera.position.copy(state.position).add(new THREE.Vector3(Math.sin(0.72) * 8.4, 2.55, Math.cos(0.72) * 8.4));
-cameraLook.copy(state.position).add(new THREE.Vector3(-2.0, 0.75, 0));
-camera.lookAt(cameraLook);
+if (track.startGantry) track.startGantry.visible = false;
+resetIntroCamera();
+buildTrackSelector();
+applyTrackTheme();
+updateTrackCopy();
+
+function resetIntroCamera() {
+  const forward = physicsForward.set(Math.sin(state.heading), 0, Math.cos(state.heading));
+  const right = physicsRight.set(forward.z, 0, -forward.x);
+  camera.position.copy(state.position).addScaledVector(forward, 5.8).addScaledVector(right, 5.8);
+  camera.position.y += 2.55;
+  cameraLook.copy(state.position).addScaledVector(forward, -1.4);
+  cameraLook.y += 0.75;
+  camera.lookAt(cameraLook);
+}
+
+function applyTrackTheme() {
+  const theme = track.theme;
+  scene.background.setHex(theme.background);
+  scene.fog.color.setHex(theme.fogColor);
+  scene.fog.density = theme.fogDensity;
+  scene.environmentIntensity = theme.environmentIntensity;
+  renderer.toneMappingExposure = theme.exposure;
+  hemi.color.setHex(theme.hemi.sky);
+  hemi.groundColor.setHex(theme.hemi.ground);
+  hemi.intensity = theme.hemi.intensity;
+  moon.color.setHex(theme.key.color);
+  moon.intensity = theme.key.intensity;
+  moonOffset.set(...theme.key.offset);
+  moon.position.copy(state.position).add(moonOffset);
+  rimLight.color.setHex(theme.rim.color);
+  rimLight.intensity = theme.rim.intensity;
+  rimLight.position.set(...theme.rim.offset);
+  bloom.strength = theme.bloom.strength;
+  bloom.radius = theme.bloom.radius;
+  bloom.threshold = theme.bloom.threshold;
+  if (effects.rain) effects.rain.visible = theme.rain !== false;
+}
+
+function updateTrackCopy() {
+  const preset = TRACK_SCENES[track.sceneId];
+  if (ui.heroDescription) ui.heroDescription.innerHTML = preset.description;
+  if (ui.trackFooterCode) ui.trackFooterCode.textContent = `${preset.index} / ${preset.code} · ${preset.distance}`;
+  if (ui.trackFooterWeather) ui.trackFooterWeather.textContent = preset.weather;
+  for (const button of document.querySelectorAll('.track-option')) {
+    const active = button.dataset.track === track.sceneId;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  }
+  if (ui.recordTotal) ui.recordTotal.textContent = formatTime(record.bestTotal);
+}
+
+function buildTrackSelector() {
+  if (!ui.trackOptions) return;
+  ui.trackOptions.innerHTML = '';
+  for (const preset of Object.values(TRACK_SCENES)) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'track-option';
+    button.dataset.track = preset.id;
+    button.setAttribute('aria-pressed', 'false');
+    button.title = `${preset.name} · ${preset.tag} · ${preset.distance}`;
+    button.setAttribute('aria-label', `${preset.name}，${preset.tag}，${preset.distance}`);
+    button.innerHTML = `<b>${preset.name}</b><small>${preset.tag}</small>`;
+    button.addEventListener('click', () => switchTrack(preset.id));
+    ui.trackOptions.appendChild(button);
+  }
+}
+
+function switchTrack(sceneId) {
+  const preset = TRACK_SCENES[sceneId];
+  if (!preset || sceneId === track.sceneId) return;
+  const previous = track;
+  track = new NeonTrack(scene, { sceneId, pointLights: quality.pointLights });
+  previous.dispose();
+  record = loadRecord(sceneId);
+  state.mode = 'intro';
+  state.nearestIndex = -1;
+  effects.reset();
+  rivals.setTrack(track);
+  resetCar(true);
+  if (track.startGantry) track.startGantry.visible = false;
+  applyTrackTheme();
+  rebuildMinimap();
+  resetIntroCamera();
+  saveTrackSelection(sceneId);
+  updateTrackCopy();
+  clearInput();
+  audio.suspend();
+  ui.pause.classList.add('hidden');
+  ui.finish.classList.add('hidden');
+  ui.hud.classList.add('hidden');
+  ui.touch.classList.add('hidden');
+  ui.countdown.classList.add('hidden');
+  ui.start.classList.remove('hidden');
+  ui.toast.classList.remove('show');
+  ui.wrongWay.classList.add('hidden');
+  state.toastTimer = 0;
+  state.impactOpacity = 0;
+  ui.impact.style.opacity = '0';
+  hudCache.position = '';
+  if (import.meta.env.DEV && window.__NEON_DEBUG__) window.__NEON_DEBUG__.track = track;
+  ui.startBtn.focus({ preventScroll: true });
+}
+
+function returnToTrackMenu() {
+  clearInput();
+  audio.suspend();
+  state.mode = 'intro';
+  state.impactOpacity = 0;
+  ui.impact.style.opacity = '0';
+  ui.pause.classList.add('hidden');
+  ui.finish.classList.add('hidden');
+  ui.hud.classList.add('hidden');
+  ui.touch.classList.add('hidden');
+  ui.countdown.classList.add('hidden');
+  ui.start.classList.remove('hidden');
+  ui.toast.classList.remove('show');
+  ui.wrongWay.classList.add('hidden');
+  state.toastTimer = 0;
+  effects.reset();
+  resetCar(true);
+  if (track.startGantry) track.startGantry.visible = false;
+  rivals.reset();
+  resetIntroCamera();
+  updateTrackCopy();
+  hudCache.position = '';
+  ui.startBtn.focus({ preventScroll: true });
+}
 
 function startRace() {
   audio.init();
   effects.reset();
   resetCar(true);
   rivals.reset();
+  if (track.startGantry) track.startGantry.visible = true;
   hudCache.position = '';
   clearInput();
   ui.start.classList.add('hidden');
@@ -362,6 +511,8 @@ ui.startBtn.addEventListener('click', startRace);
 $('#resume-btn').addEventListener('click', () => togglePause(true));
 $('#restart-btn').addEventListener('click', startRace);
 $('#race-again-btn').addEventListener('click', startRace);
+$('#change-track-btn').addEventListener('click', returnToTrackMenu);
+$('#change-track-finish-btn').addEventListener('click', returnToTrackMenu);
 $('#pause-btn').addEventListener('click', () => togglePause());
 $('#camera-btn').addEventListener('click', cycleCamera);
 $('#sound-btn').addEventListener('click', () => { audio.init(); audio.toggle(); });
@@ -373,7 +524,8 @@ addEventListener('keydown', (event) => {
     event.preventDefault();
   }
   if (event.repeat) return;
-  if (event.code === 'Enter' && (state.mode === 'intro' || state.mode === 'finished')) startRace();
+  const onTrackOption = event.target instanceof Element && event.target.closest('.track-option');
+  if (event.code === 'Enter' && !onTrackOption && (state.mode === 'intro' || state.mode === 'finished')) startRace();
   if (event.code === 'Escape' || event.code === 'KeyP') togglePause();
   if (event.code === 'KeyC') cycleCamera();
   if (event.code === 'KeyM') audio.toggle();
@@ -692,13 +844,12 @@ function updateCamera(dt, now) {
     introTime += dt;
     const angle = 0.72 + Math.sin(introTime * 0.16) * 0.24;
     const radius = 8.4 * (portrait ? 1.15 : 1);
-    cameraDesired.copy(state.position);
-    cameraDesired.x += Math.sin(angle) * radius;
+    cameraDesired.copy(state.position)
+      .addScaledVector(forward, Math.cos(angle) * radius)
+      .addScaledVector(right, Math.sin(angle) * radius);
     cameraDesired.y += 2.55;
-    cameraDesired.z += Math.cos(angle) * radius;
     camera.position.lerp(cameraDesired, 1 - Math.exp(-2 * dt));
-    cameraLookTarget.copy(state.position);
-    cameraLookTarget.x -= 2.0;
+    cameraLookTarget.copy(state.position).addScaledVector(forward, -1.4);
     cameraLookTarget.y += 0.75;
     cameraLook.lerp(cameraLookTarget, 1 - Math.exp(-2 * dt));
     camera.fov = lerp(camera.fov, 53, 0.04);
@@ -736,10 +887,13 @@ function updateCamera(dt, now) {
 scene.add(moon.target);
 
 const mapContext = ui.minimap.getContext('2d');
-const mapBounds = track.samples.reduce((bounds, sample) => ({
-  minX: Math.min(bounds.minX, sample.point.x), maxX: Math.max(bounds.maxX, sample.point.x),
-  minZ: Math.min(bounds.minZ, sample.point.z), maxZ: Math.max(bounds.maxZ, sample.point.z),
-}), { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity });
+function computeMapBounds() {
+  return track.samples.reduce((bounds, sample) => ({
+    minX: Math.min(bounds.minX, sample.point.x), maxX: Math.max(bounds.maxX, sample.point.x),
+    minZ: Math.min(bounds.minZ, sample.point.z), maxZ: Math.max(bounds.maxZ, sample.point.z),
+  }), { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity });
+}
+let mapBounds = computeMapBounds();
 function mapPoint(position) {
   const padding = 38;
   const w = ui.minimap.width - padding * 2;
@@ -756,6 +910,7 @@ mapBase.height = ui.minimap.height;
 const mapBaseContext = mapBase.getContext('2d');
 function drawMinimapBase() {
   const ctx = mapBaseContext;
+  const colors = track.theme.minimap;
   ctx.clearRect(0, 0, mapBase.width, mapBase.height);
   ctx.lineJoin = 'round'; ctx.lineCap = 'round';
   ctx.beginPath();
@@ -764,14 +919,18 @@ function drawMinimapBase() {
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   });
   ctx.closePath();
-  ctx.strokeStyle = 'rgba(2,5,10,.7)'; ctx.lineWidth = 15; ctx.stroke();
-  ctx.strokeStyle = 'rgba(97,132,157,.45)'; ctx.lineWidth = 7; ctx.stroke();
-  ctx.strokeStyle = 'rgba(152,197,217,.25)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.strokeStyle = colors.dark; ctx.lineWidth = 15; ctx.stroke();
+  ctx.strokeStyle = colors.mid; ctx.lineWidth = 7; ctx.stroke();
+  ctx.strokeStyle = colors.light; ctx.lineWidth = 1.5; ctx.stroke();
   const [sx, sy] = mapPoint(track.frameAt(0).point);
-  ctx.strokeStyle = '#d9f7ff'; ctx.lineWidth = 3;
+  ctx.strokeStyle = colors.start; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(sx - 6, sy); ctx.lineTo(sx + 6, sy); ctx.stroke();
 }
-drawMinimapBase();
+function rebuildMinimap() {
+  mapBounds = computeMapBounds();
+  drawMinimapBase();
+}
+rebuildMinimap();
 function drawMinimap() {
   const ctx = mapContext;
   ctx.clearRect(0, 0, ui.minimap.width, ui.minimap.height);
