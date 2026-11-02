@@ -45,3 +45,10 @@
   .track-option b{font-size:11px}
   .track-option small{font-size:8px}
 }
+@media(max-height:700px){
+  .start-screen{padding-top:84px;padding-bottom:32px}
+  .start-screen h1{font-size:clamp(58px,11vh,88px);line-height:.82}
+  .hero-description{margin-bottom:16px;line-height:1.6}
+  .track-picker{margin:10px 0 12px}
+  .start-meta{margin-top:12px}
+}

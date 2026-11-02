@@ -36,9 +36,10 @@ reducedMotionMedia.addEventListener?.('change', (event) => { reducedMotion = eve
 const hardwareConcurrency = navigator.hardwareConcurrency || 8;
 const lowPower = isTouch || hardwareConcurrency <= 4;
 const quality = {
-  pixelRatio: Math.min(devicePixelRatio, lowPower ? 1.15 : 1.6),
-  shadowMapSize: lowPower ? 1024 : 2048,
+  pixelRatio: Math.min(devicePixelRatio, lowPower ? 1.25 : 2),
+  shadowMapSize: lowPower ? 2048 : 4096,
   pointLights: lowPower ? 3 : 8,
+  samples: lowPower ? 2 : 4,
 };
 const TOTAL_LAPS = 3;
 
@@ -65,6 +66,8 @@ pmrem.dispose();
 
 const hemi = new THREE.HemisphereLight(0x6b8eb8, 0x08070d, 1.15);
 scene.add(hemi);
+const ambient = new THREE.AmbientLight(0x31465e, 0.45);
+scene.add(ambient);
 const moon = new THREE.DirectionalLight(0xa9c9ef, 2.2);
 moon.position.set(-60, 110, 35);
 moon.castShadow = true;
@@ -74,6 +77,7 @@ moon.shadow.camera.right = moon.shadow.camera.top = 65;
 moon.shadow.camera.near = 1;
 moon.shadow.camera.far = 260;
 moon.shadow.bias = -0.0003;
+moon.shadow.radius = 2;
 scene.add(moon);
 const rimLight = new THREE.DirectionalLight(0xff3686, 0.85);
 rimLight.position.set(80, 25, -90);
@@ -120,6 +124,8 @@ const rivals = new RivalManager(scene, track, effects, {
 });
 ui.raceTotal.textContent = String(rivals.totalCars);
 const composer = new EffectComposer(renderer);
+composer.renderTarget1.samples = quality.samples;
+composer.renderTarget2.samples = quality.samples;
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.52, 0.38, 0.9);
 composer.addPass(bloom);
@@ -249,7 +255,7 @@ function saveRecord() {
     // 隐私模式或存储被禁用时忽略
   }
 }
-if (import.meta.env.DEV) window.__NEON_DEBUG__ = { scene, car, camera, state, track, rivals, effects, renderer };
+if (import.meta.env.DEV) window.__NEON_DEBUG__ = { scene, car, camera, state, track, rivals, effects, renderer, composer, bloom, startRace };
 let countdownStart = 0;
 let countdownValue = null;
 let previousTime = performance.now();
@@ -350,6 +356,8 @@ function applyTrackTheme() {
   hemi.color.setHex(theme.hemi.sky);
   hemi.groundColor.setHex(theme.hemi.ground);
   hemi.intensity = theme.hemi.intensity;
+  ambient.color.setHex(theme.ambient.color);
+  ambient.intensity = theme.ambient.intensity;
   moon.color.setHex(theme.key.color);
   moon.intensity = theme.key.intensity;
   moonOffset.set(...theme.key.offset);
@@ -970,6 +978,6 @@ addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
-  renderer.setPixelRatio(Math.min(devicePixelRatio, lowPower ? 1.15 : 1.6));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, lowPower ? 1.25 : 2));
   composer.setSize(innerWidth, innerHeight);
 });

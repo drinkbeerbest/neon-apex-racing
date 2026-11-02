@@ -44,6 +44,93 @@ function makeAsphaltTexture() {
   const texture = new THREE.CanvasTexture(canvas);
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 16;
+  return texture;
+}
+
+function makeAsphaltNormalTexture() {
+  const rand = seededRandom(71);
+  const width = 512;
+  const height = 512;
+  const heightCanvas = document.createElement('canvas');
+  heightCanvas.width = heightCanvas.height = 512;
+  const hctx = heightCanvas.getContext('2d');
+  hctx.fillStyle = '#808080';
+  hctx.fillRect(0, 0, width, height);
+  for (let i = 0; i < 2400; i++) {
+    const x = rand() * width;
+    const y = rand() * height;
+    const radius = 1 + rand() * 5;
+    const shade = rand() > 0.5 ? 255 : 0;
+    const alpha = 0.05 + rand() * 0.2;
+    const gradient = hctx.createRadialGradient(x, y, 0, x, y, radius);
+    gradient.addColorStop(0, `rgba(${shade},${shade},${shade},${alpha})`);
+    gradient.addColorStop(1, 'rgba(128,128,128,0)');
+    hctx.fillStyle = gradient;
+    hctx.beginPath();
+    hctx.arc(x, y, radius, 0, Math.PI * 2);
+    hctx.fill();
+  }
+  const source = hctx.getImageData(0, 0, width, height).data;
+  const normalCanvas = document.createElement('canvas');
+  normalCanvas.width = normalCanvas.height = 512;
+  const nctx = normalCanvas.getContext('2d');
+  const normalImage = nctx.createImageData(width, height);
+  const strength = 2.6;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const left = source[(y * width + ((x - 1 + width) % width)) * 4];
+      const right = source[(y * width + ((x + 1) % width)) * 4];
+      const up = source[(((y - 1 + height) % height) * width + x) * 4];
+      const down = source[(((y + 1) % height) * width + x) * 4];
+      const dx = (right - left) / 255 * strength;
+      const dy = (down - up) / 255 * strength;
+      let nx = -dx;
+      let ny = -dy;
+      let nz = 1;
+      const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      nx /= len; ny /= len; nz /= len;
+      const index = (y * width + x) * 4;
+      normalImage.data[index] = (nx * 0.5 + 0.5) * 255;
+      normalImage.data[index + 1] = (ny * 0.5 + 0.5) * 255;
+      normalImage.data[index + 2] = (nz * 0.5 + 0.5) * 255;
+      normalImage.data[index + 3] = 255;
+    }
+  }
+  nctx.putImageData(normalImage, 0, 0);
+  const texture = new THREE.CanvasTexture(normalCanvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.anisotropy = 8;
+  return texture;
+}
+
+function makeAsphaltRoughnessTexture() {
+  const rand = seededRandom(83);
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgb(225,225,225)';
+  ctx.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 42; i++) {
+    const x = rand() * 512;
+    const y = rand() * 512;
+    const rx = 12 + rand() * 70;
+    const ry = 8 + rand() * 40;
+    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+    gradient.addColorStop(0, 'rgba(42,42,42,.75)');
+    gradient.addColorStop(0.55, 'rgba(86,86,86,.3)');
+    gradient.addColorStop(1, 'rgba(225,225,225,0)');
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(1, ry / rx);
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(0, 0, rx, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   texture.anisotropy = 8;
   return texture;
 }
@@ -91,6 +178,326 @@ function makeGroundTexture(road) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = 4;
+  return texture;
+}
+
+function makeTowerTextures(seed, hue, style = 'glass') {
+  const rand = seededRandom(seed);
+  const width = 512;
+  const height = 1024;
+  const albedoCanvas = document.createElement('canvas');
+  albedoCanvas.width = width;
+  albedoCanvas.height = height;
+  const ac = albedoCanvas.getContext('2d');
+  const emissiveCanvas = document.createElement('canvas');
+  emissiveCanvas.width = width;
+  emissiveCanvas.height = height;
+  const ec = emissiveCanvas.getContext('2d');
+  ec.fillStyle = '#141b24';
+  ec.fillRect(0, 0, width, height);
+  const heightCanvas = document.createElement('canvas');
+  heightCanvas.width = width;
+  heightCanvas.height = height;
+  const hc = heightCanvas.getContext('2d');
+  hc.fillStyle = '#808080';
+  hc.fillRect(0, 0, width, height);
+
+  const glass = style === 'glass';
+  const residential = style === 'residential';
+  const cols = glass ? 16 : residential ? 11 : 13;
+  const rows = glass ? 36 : residential ? 28 : 32;
+  const cellW = width / cols;
+  const cellH = height / rows;
+  const litChance = glass ? 0.2 : residential ? 0.26 : 0.22;
+
+  const base = ac.createLinearGradient(0, 0, width, height);
+  if (glass) {
+    base.addColorStop(0, `hsl(${hue}, 34%, 33%)`);
+    base.addColorStop(0.45, `hsl(${hue + 10}, 26%, 21%)`);
+    base.addColorStop(1, `hsl(${hue - 8}, 26%, 14%)`);
+  } else if (residential) {
+    base.addColorStop(0, `hsl(${hue}, 12%, 37%)`);
+    base.addColorStop(0.55, `hsl(${hue}, 10%, 25%)`);
+    base.addColorStop(1, `hsl(${hue}, 9%, 17%)`);
+  } else {
+    base.addColorStop(0, `hsl(${hue}, 18%, 39%)`);
+    base.addColorStop(0.55, `hsl(${hue}, 16%, 27%)`);
+    base.addColorStop(1, `hsl(${hue}, 14%, 18%)`);
+  }
+  ac.fillStyle = base;
+  ac.fillRect(0, 0, width, height);
+
+  for (let i = 0; i < (glass ? 18 : 6); i++) {
+    ac.fillStyle = `hsla(${hue + 20}, 60%, 70%, ${0.015 + rand() * 0.035})`;
+    ac.fillRect(rand() * width, 0, 2 + rand() * 20, height);
+  }
+  for (let i = 0; i < 8; i++) {
+    ac.fillStyle = `rgba(255, 220, 180, ${0.015 + rand() * 0.03})`;
+    ac.fillRect(rand() * width, 0, 1 + rand() * 8, height);
+  }
+
+  for (let row = 0; row < rows; row++) {
+    const y = row * cellH;
+    const slabHeight = glass ? 5 : 8;
+    const darkFloor = rand() < (glass ? 0.35 : residential ? 0.26 : 0.3);
+    ac.fillStyle = glass ? 'rgba(5,10,16,.7)' : `hsla(${hue}, 12%, ${14 + rand() * 8}%, .9)`;
+    ac.fillRect(0, y + cellH - slabHeight, width, slabHeight);
+    hc.fillStyle = 'rgb(188,188,188)';
+    hc.fillRect(0, y + cellH - slabHeight, width, slabHeight);
+    if (residential && row % 3 === 0) {
+      ac.fillStyle = 'rgba(8,12,18,.82)';
+      ac.fillRect(0, y + cellH - 14, width, 10);
+      ec.fillStyle = `hsla(${hue + 200}, 30%, 60%, .035)`;
+      ec.fillRect(0, y + cellH - 14, width, 10);
+    }
+    for (let col = 0; col < cols; col++) {
+      const x = col * cellW;
+      const padX = glass ? 7 : residential ? 8 : 7;
+      const padY = glass ? 6 : 8;
+      const winW = cellW - padX * 2;
+      const winH = cellH - slabHeight - padY;
+      const lit = !darkFloor && rand() < litChance;
+      const roll = rand();
+      let pane;
+      if (glass) {
+        pane = lit
+          ? (roll > 0.91 ? `hsla(${hue + 150}, 24%, 72%, .42)` : `rgba(255, 221, 184, ${0.26 + rand() * 0.18})`)
+          : `hsl(${hue + 4}, 22%, ${16 + rand() * 8}%)`;
+      } else if (residential) {
+        pane = lit ? `rgba(255, 214, 166, ${0.28 + rand() * 0.18})` : `hsl(${hue}, 14%, ${14 + rand() * 9}%)`;
+      } else {
+        pane = lit ? (roll > 0.9 ? `hsla(${hue + 160}, 22%, 74%, .38)` : `rgba(255, 218, 178, ${0.26 + rand() * 0.17})`) : `hsl(${hue}, 18%, ${17 + rand() * 10}%)`;
+      }
+      ac.fillStyle = pane;
+      ac.fillRect(x + padX, y + 6, winW, winH);
+      hc.fillStyle = 'rgb(94,94,94)';
+      hc.fillRect(x + padX, y + 6, winW, winH);
+      hc.fillStyle = 'rgb(224,224,224)';
+      hc.fillRect(x + padX - 2, y + 6, 2, winH);
+      ac.fillStyle = 'rgba(3,7,12,.6)';
+      ac.fillRect(x + padX, y + 6, 2, winH);
+      ac.fillRect(x + padX, y + 6 + Math.floor(winH * 0.45), winW, 2);
+      if (glass) {
+        ac.fillStyle = 'rgba(255,255,255,.04)';
+        ac.fillRect(x + padX + 3, y + 8, winW * 0.36, winH * 0.5);
+      }
+      if (lit) {
+        const warm = roll > 0.08;
+        ec.globalAlpha = 0.32 + rand() * 0.16;
+        ec.fillStyle = warm
+          ? `hsl(${34 + rand() * 10}, 28%, ${64 + rand() * 10}%)`
+          : `hsl(${hue + 150}, 22%, ${66 + rand() * 10}%)`;
+        ec.fillRect(x + padX, y + 6, winW, winH);
+        ec.globalAlpha = 0.05;
+        ec.fillRect(x + padX - 3, y + 3, winW + 6, winH + 6);
+        ec.globalAlpha = 1;
+      }
+    }
+  }
+
+  if (glass) {
+    for (let i = 0; i < 1; i++) {
+      const x = rand() * width * 0.8;
+      const y = height * 0.2;
+      const w = 14 + rand() * 10;
+      ac.fillStyle = 'rgba(5,11,18,.6)';
+      ac.fillRect(x, y, w, height * 0.24);
+      ec.globalAlpha = 0.14;
+      ec.fillStyle = `hsl(${hue + 170}, 42%, 58%)`;
+      ec.fillRect(x + 2, y + 4, w - 4, height * 0.24 - 8);
+      ec.globalAlpha = 1;
+    }
+  }
+  if (!glass) {
+    for (let i = 0; i < 2; i++) {
+      const x = rand() * width * 0.75;
+      const y = 70 + rand() * (height * 0.7);
+      ac.fillStyle = 'rgba(8,14,22,.8)';
+      ac.fillRect(x, y, 16, 64);
+      ec.globalAlpha = 0.16;
+      ec.fillStyle = i % 2 ? 'hsl(190, 50%, 60%)' : 'hsl(332, 55%, 62%)';
+      ec.fillRect(x + 3, y + 3, 10, 58);
+      ec.globalAlpha = 1;
+    }
+  }
+
+  const heightSource = hc.getImageData(0, 0, width, height).data;
+  const normalCanvas = document.createElement('canvas');
+  normalCanvas.width = width;
+  normalCanvas.height = height;
+  const nctx = normalCanvas.getContext('2d');
+  const normalImage = nctx.createImageData(width, height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const left = heightSource[(y * width + ((x - 1 + width) % width)) * 4];
+      const right = heightSource[(y * width + ((x + 1) % width)) * 4];
+      const up = heightSource[(((y - 1 + height) % height) * width + x) * 4];
+      const down = heightSource[(((y + 1) % height) * width + x) * 4];
+      const dx = (right - left) / 255 * 1.9;
+      const dy = (down - up) / 255 * 1.9;
+      const nx = -dx;
+      const ny = -dy;
+      const nz = 1;
+      const length = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      const index = (y * width + x) * 4;
+      normalImage.data[index] = (nx / length * 0.5 + 0.5) * 255;
+      normalImage.data[index + 1] = (ny / length * 0.5 + 0.5) * 255;
+      normalImage.data[index + 2] = (nz / length * 0.5 + 0.5) * 255;
+      normalImage.data[index + 3] = 255;
+    }
+  }
+  nctx.putImageData(normalImage, 0, 0);
+  const normalMap = new THREE.CanvasTexture(normalCanvas);
+  normalMap.anisotropy = 8;
+  const roughnessMap = new THREE.CanvasTexture(heightCanvas);
+  roughnessMap.anisotropy = 8;
+
+  const map = new THREE.CanvasTexture(albedoCanvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = 16;
+  map.minFilter = THREE.LinearMipmapLinearFilter;
+  map.magFilter = THREE.LinearFilter;
+  const emissiveMap = new THREE.CanvasTexture(emissiveCanvas);
+  emissiveMap.colorSpace = THREE.SRGBColorSpace;
+  emissiveMap.anisotropy = 16;
+  emissiveMap.minFilter = THREE.LinearMipmapLinearFilter;
+  emissiveMap.magFilter = THREE.LinearFilter;
+  return { map, emissiveMap, normalMap, roughnessMap };
+}
+
+function makeWarehouseTextures(seed, hue) {
+  const rand = seededRandom(seed);
+  const width = 512;
+  const height = 512;
+  const albedoCanvas = document.createElement('canvas');
+  albedoCanvas.width = width;
+  albedoCanvas.height = height;
+  const ac = albedoCanvas.getContext('2d');
+  const emissiveCanvas = document.createElement('canvas');
+  emissiveCanvas.width = width;
+  emissiveCanvas.height = height;
+  const ec = emissiveCanvas.getContext('2d');
+  ec.fillStyle = '#141b24';
+  ec.fillRect(0, 0, width, height);
+
+  const base = ac.createLinearGradient(0, 0, 0, height);
+  base.addColorStop(0, `hsl(${hue}, 12%, 32%)`);
+  base.addColorStop(0.55, `hsl(${hue}, 10%, 21%)`);
+  base.addColorStop(1, `hsl(${hue}, 9%, 14%)`);
+  ac.fillStyle = base;
+  ac.fillRect(0, 0, width, height);
+  for (let x = 0; x < width; x += 14) {
+    ac.fillStyle = 'rgba(5,10,14,.38)';
+    ac.fillRect(x, 0, 2, height);
+    ac.fillStyle = `hsla(${hue}, 18%, ${48 + rand() * 18}%, .12)`;
+    ac.fillRect(x + 3, 0, 1, height);
+  }
+  for (let i = 0; i < 14; i++) {
+    ac.fillStyle = `rgba(20,14,10,${0.04 + rand() * 0.12})`;
+    ac.fillRect(rand() * width, rand() * height, 2 + rand() * 10, 24 + rand() * 120);
+  }
+  ac.fillStyle = 'rgba(9,14,18,.92)';
+  ac.fillRect(0, height - 34, width, 34);
+  ac.fillStyle = 'rgba(215,190,110,.18)';
+  ac.fillRect(0, height - 28, width, 4);
+
+  for (let i = 0; i < 4; i++) {
+    const doorX = 24 + i * 122;
+    ac.fillStyle = `hsla(${hue}, 16%, ${25 + rand() * 8}%, .95)`;
+    ac.fillRect(doorX, 96, 88, 318);
+    for (let line = 0; line < 24; line++) {
+      ac.fillStyle = 'rgba(150,166,178,.08)';
+      ac.fillRect(doorX + 3, 102 + line * 12, 82, 2);
+    }
+    ac.fillStyle = 'rgba(4,8,12,.9)';
+    ac.fillRect(doorX + 94, 112, 12, 300);
+    ac.fillStyle = rand() > 0.5 ? `hsla(${hue + 160}, 85%, 60%, .7)` : 'rgba(255,201,132,.65)';
+    ac.fillRect(doorX + 8, 62, 26, 12);
+    ec.globalAlpha = 0.65;
+    ec.fillStyle = 'rgba(255,196,128,.8)';
+    ec.fillRect(doorX + 8, 62, 26, 12);
+    ec.globalAlpha = 0.4;
+    ec.fillStyle = 'rgba(255,220,170,.5)';
+    ec.fillRect(doorX + 4, 56, 34, 20);
+    ec.globalAlpha = 1;
+  }
+  for (let i = 0; i < 6; i++) {
+    const x = 16 + i * 82;
+    ac.fillStyle = 'rgba(8,12,17,.92)';
+    ac.fillRect(x, 28, 42, 16);
+    ec.globalAlpha = 0.45 + rand() * 0.3;
+    ec.fillStyle = rand() > 0.5 ? 'hsl(28, 85%, 66%)' : 'hsl(190, 80%, 64%)';
+    ec.fillRect(x + 2, 30, 38, 12);
+    ec.globalAlpha = 1;
+  }
+  ac.fillStyle = 'rgba(8,12,17,.9)';
+  ac.fillRect(30, 180, 300, 54);
+  ac.fillStyle = `hsla(${hue + 150}, 25%, 62%, .35)`;
+  ac.fillRect(34, 184, 292, 46);
+  ec.globalAlpha = 0.35;
+  ec.fillStyle = `hsl(${hue + 150}, 70%, 58%)`;
+  ec.fillRect(34, 184, 292, 46);
+  ec.globalAlpha = 1;
+
+  const map = new THREE.CanvasTexture(albedoCanvas);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = 16;
+  map.minFilter = THREE.LinearMipmapLinearFilter;
+  map.magFilter = THREE.LinearFilter;
+  const emissiveMap = new THREE.CanvasTexture(emissiveCanvas);
+  emissiveMap.colorSpace = THREE.SRGBColorSpace;
+  emissiveMap.anisotropy = 16;
+  emissiveMap.minFilter = THREE.LinearMipmapLinearFilter;
+  emissiveMap.magFilter = THREE.LinearFilter;
+  return { map, emissiveMap };
+}
+
+function makeGableRoofGeometry() {
+  const positions = [
+    -0.5, 0, 0.5, 0.5, 0, 0.5, 0, 1, 0.5,
+    -0.5, 0, -0.5, 0.5, 0, -0.5, 0, 1, -0.5,
+  ];
+  const indices = [
+    0, 1, 2,
+    3, 5, 4,
+    0, 2, 5, 0, 5, 3,
+    1, 4, 5, 1, 5, 2,
+  ];
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function makeVerticalSignTexture(text, sub, color) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 1024;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#050913';
+  ctx.fillRect(0, 0, 256, 1024);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 6;
+  ctx.strokeRect(10, 10, 236, 1004);
+  ctx.fillStyle = color;
+  ctx.fillRect(28, 34, 8, 956);
+  ctx.save();
+  ctx.translate(154, 500);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = color;
+  ctx.font = 'italic 800 118px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+  ctx.fillStyle = 'rgba(190, 210, 228, .8)';
+  ctx.font = '600 24px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(sub, 140, 968);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
   return texture;
 }
 
@@ -331,13 +738,14 @@ const THEMES = {
     exposure: 1.03,
     background: 0x03060d,
     fogColor: 0x060b16,
-    fogDensity: 0.0036,
-    hemi: { sky: 0x6b8eb8, ground: 0x08070d, intensity: 1.15 },
+    fogDensity: 0.0021,
+    hemi: { sky: 0x8baac8, ground: 0x0b0a10, intensity: 1.65 },
+    ambient: { color: 0x40546b, intensity: 1.05 },
     key: { color: 0xa9c9ef, intensity: 2.2, offset: [-60, 110, 35] },
-    rim: { color: 0xff3686, intensity: 0.85, offset: [80, 25, -90] },
+    rim: { color: 0xff88a8, intensity: 0.1, offset: [80, 25, -90] },
     rain: true,
     bloom: { strength: 0.52, radius: 0.38, threshold: 0.9 },
-    environmentIntensity: 0.5,
+    environmentIntensity: 0.8,
     sky: {
       top: 0x02040a, mid: 0x071426, horizon: 0x1b2c46, glow: 0x4b2050,
       band: 0.55, cityGlow: 0.4,
@@ -360,15 +768,25 @@ const THEMES = {
     minimap: { dark: 'rgba(2,5,10,.7)', mid: 'rgba(97,132,157,.45)', light: 'rgba(152,197,217,.25)', start: '#d9f7ff' },
     city: {
       style: 'towers', seed: 83, count: 48, radius: [270, 500], height: [20, 140], width: [10, 32], depth: [10, 32],
-      textures: [[3, 190], [7, 315], [13, 175]],
-      materials: [[0x17202d, 0x497586, 0.8], [0x1d1826, 0x74435f, 0.8], [0x152229, 0x3d6b78, 0.7]],
+      textures: [[3, 205, 'glass'], [7, 28, 'residential'], [13, 200, 'office']],
+      materials: [
+        [0xffffff, 0xffffff, 0.72, 0.32, 0.28],
+        [0xffffff, 0xffffff, 0.58, 0.62, 0.08],
+        [0xffffff, 0xffffff, 0.66, 0.46, 0.24],
+      ],
       podium: { seed: 41, hue: 210, tint: 0x233041, emissive: 0x44617a, intensity: 0.5, minHeight: 5, maxHeight: 14, grow: 1.28 },
       strips: [0x59edff, 0xff4b8b, 0x9d7cff], stripChance: 0.68,
+      crownLightColors: [0xbfe6ff, 0xffd6b0, 0x9fd8ff],
       roofSigns: [
         ['APEX', 'NIGHT SERIES', '#59edff'],
         ['NEON', '24 HOUR', '#ae74ff'],
         ['TOKYO', 'BAY 01', '#ff4b8b'],
         ['APEX', 'MIDNIGHT', '#59edff'],
+      ],
+      facadeSigns: [
+        ['HOTEL', 'TOKYO BAY', '#ff4b8b'],
+        ['NEON', 'STUDIO', '#59edff'],
+        ['24H', 'PARKING', '#ffb15c'],
       ],
       crownChance: 0.55, antennaChance: 0.55,
     },
@@ -388,13 +806,14 @@ const THEMES = {
     exposure: 1.0,
     background: 0x0b0a12,
     fogColor: 0x191722,
-    fogDensity: 0.0038,
-    hemi: { sky: 0xffb37a, ground: 0x081018, intensity: 1.0 },
+    fogDensity: 0.0024,
+    hemi: { sky: 0xffc39a, ground: 0x0c1018, intensity: 1.35 },
+    ambient: { color: 0x8a4a2e, intensity: 0.45 },
     key: { color: 0xffb27a, intensity: 1.8, offset: [120, 55, -80] },
     rim: { color: 0x2fa6c9, intensity: 0.6, offset: [-100, 30, 70] },
     rain: false,
     bloom: { strength: 0.42, radius: 0.36, threshold: 0.92 },
-    environmentIntensity: 0.48,
+    environmentIntensity: 0.75,
     sky: {
       top: 0x0a1228, mid: 0x3a2a44, horizon: 0xd06a4a, glow: 0xff8a4a,
       band: 0.7, cityGlow: 0.25,
@@ -449,13 +868,14 @@ const THEMES = {
     exposure: 1.12,
     background: 0x1c2a3c,
     fogColor: 0x8191a6,
-    fogDensity: 0.0028,
-    hemi: { sky: 0xffd7b5, ground: 0x1a2130, intensity: 1.35 },
+    fogDensity: 0.0018,
+    hemi: { sky: 0xffe0c4, ground: 0x1c2635, intensity: 1.6 },
+    ambient: { color: 0x9aa7b8, intensity: 0.45 },
     key: { color: 0xffc89b, intensity: 2.6, offset: [-140, 95, 120] },
     rim: { color: 0x78a7e0, intensity: 0.55, offset: [100, 30, -60] },
     rain: false,
     bloom: { strength: 0.32, radius: 0.42, threshold: 1.0 },
-    environmentIntensity: 0.85,
+    environmentIntensity: 1.05,
     sky: {
       top: 0x16304f, mid: 0x4d6f92, horizon: 0xffc39a, glow: 0xff9a6d,
       band: 0.5, cityGlow: 0.2,
@@ -478,14 +898,23 @@ const THEMES = {
     minimap: { dark: 'rgba(20,24,30,.7)', mid: 'rgba(148,168,190,.45)', light: 'rgba(220,234,248,.28)', start: '#ffd9c2' },
     city: {
       style: 'towers', seed: 211, count: 48, radius: [300, 560], height: [24, 170], width: [10, 34], depth: [10, 34],
-      textures: [[23, 205], [31, 18], [37, 335]],
-      materials: [[0x2a3a4c, 0x8fb4c8, 0.7], [0x3a3348, 0xd7a38f, 0.6], [0x23313d, 0x6fa9b8, 0.65]],
+      textures: [[23, 210, 'glass'], [31, 35, 'residential'], [37, 205, 'office']],
+      materials: [
+        [0xffffff, 0xffffff, 0.66, 0.34, 0.3],
+        [0xffffff, 0xffffff, 0.52, 0.6, 0.1],
+        [0xffffff, 0xffffff, 0.6, 0.48, 0.26],
+      ],
       podium: { seed: 43, hue: 26, tint: 0x3b3540, emissive: 0xc08a6b, intensity: 0.6, minHeight: 5, maxHeight: 14, grow: 1.26 },
       strips: [0xffc39a, 0x87d7ff, 0xc3a6ff], stripChance: 0.55,
+      crownLightColors: [0xffe0c4, 0xbfe6ff, 0xfff2e0],
       roofSigns: [
         ['AURORA', 'MORNING RUN', '#ffc39a'],
         ['SKYLINE', '05:42 LOCAL', '#87d7ff'],
         ['APEX', 'FIRST LIGHT', '#ffc39a'],
+      ],
+      facadeSigns: [
+        ['AURORA', 'HOTEL', '#ffc39a'],
+        ['SKY', 'LOUNGE', '#87d7ff'],
       ],
       crownChance: 0.6, antennaChance: 0.5,
     },
@@ -750,12 +1179,17 @@ export class NeonTrack {
       color: 0x090d13, roughness: 0.62, metalness: 0.5,
     }));
     const asphalt = makeAsphaltTexture();
+    const asphaltNormal = makeAsphaltNormalTexture();
+    const asphaltRoughness = makeAsphaltRoughnessTexture();
     const road = this.createRibbon(0, TRACK_WIDTH, 0, new THREE.MeshStandardMaterial({
       color: theme.road.asphalt,
       map: asphalt,
+      normalMap: asphaltNormal,
+      normalScale: new THREE.Vector2(0.32, 0.32),
+      roughnessMap: asphaltRoughness,
       roughness: theme.road.roughness,
       metalness: theme.road.metalness,
-      envMapIntensity: 0.75,
+      envMapIntensity: 0.9,
     }));
     road.receiveShadow = true;
 
@@ -909,18 +1343,43 @@ export class NeonTrack {
     const perBatch = city.count;
     const buildingGeo = new THREE.BoxGeometry(1, 1, 1);
     buildingGeo.translate(0, 0.5, 0);
-    const textures = city.textures.map(([seed, hue]) => makeBuildingTexture(seed, hue));
+    const roundGeo = new THREE.CylinderGeometry(0.5, 0.52, 1, 16, 1, false);
+    roundGeo.translate(0, 0.5, 0);
+    const textures = city.textures.map(([seed, hue, style]) => makeTowerTextures(seed, hue, style));
     const records = [];
     const dummy = new THREE.Object3D();
+    const tintColor = new THREE.Color();
+    const tintPalettes = [
+      [0xe8f3ff, 0xd7e6f7, 0xf6faff],
+      [0xffe7cf, 0xf0d9c4, 0xfff1de],
+      [0xdde8f0, 0xcbd9e4, 0xeff5fa],
+    ];
 
     for (let batch = 0; batch < city.materials.length; batch++) {
-      const [color, emissive, emissiveIntensity] = city.materials[batch];
-      const material = new THREE.MeshStandardMaterial({
-        color, map: textures[batch], emissiveMap: textures[batch], emissive, emissiveIntensity,
-        roughness: 0.75, metalness: 0.25,
+      const [tint, emissive, emissiveIntensity, roughness, metalness] = city.materials[batch];
+      const texture = textures[batch];
+      const material = new THREE.MeshPhysicalMaterial({
+        color: tint,
+        map: texture.map,
+        emissiveMap: texture.emissiveMap,
+        emissive,
+        emissiveIntensity,
+        normalMap: texture.normalMap,
+        normalScale: new THREE.Vector2(0.28, 0.28),
+        roughnessMap: texture.roughnessMap,
+        roughness,
+        metalness,
+        clearcoat: batch === 0 ? 0.55 : 0.18,
+        clearcoatRoughness: 0.18,
+        clearcoatNormalMap: texture.normalMap,
+        clearcoatNormalScale: new THREE.Vector2(0.12, 0.12),
+        envMapIntensity: metalness > 0.2 ? 1.25 : 0.7,
       });
       const shafts = new THREE.InstancedMesh(buildingGeo, material, perBatch);
       const crowns = new THREE.InstancedMesh(buildingGeo, material, perBatch);
+      const roundShafts = new THREE.InstancedMesh(roundGeo, material, perBatch);
+      const roundCrowns = new THREE.InstancedMesh(roundGeo, material, perBatch);
+      const crowns2 = new THREE.InstancedMesh(buildingGeo, material, perBatch);
       for (let i = 0; i < perBatch; i++) {
         const angle = rand() * Math.PI * 2;
         const radius = city.radius[0] + rand() * (city.radius[1] - city.radius[0]);
@@ -930,40 +1389,67 @@ export class NeonTrack {
         const x = Math.cos(angle) * radius;
         const z = Math.sin(angle) * radius;
         const rotation = rand() * Math.PI;
+        const round = height > 55 && rand() < 0.14;
+        const tintHex = tintPalettes[batch % tintPalettes.length][Math.floor(rand() * 3)];
+        for (const mesh of [shafts, crowns, roundShafts, roundCrowns, crowns2]) {
+          dummy.position.set(x, -100, z);
+          dummy.rotation.set(0, 0, 0);
+          dummy.scale.set(0.001, 0.001, 0.001);
+          dummy.updateMatrix();
+          mesh.setMatrixAt(i, dummy.matrix);
+        }
         dummy.position.set(x, -0.1, z);
         dummy.scale.set(width, height, depth);
         dummy.rotation.set(0, rotation, 0);
         dummy.updateMatrix();
-        shafts.setMatrixAt(i, dummy.matrix);
+        if (round) {
+          roundShafts.setMatrixAt(i, dummy.matrix);
+        } else {
+          shafts.setMatrixAt(i, dummy.matrix);
+        }
+        shafts.setColorAt(i, tintColor.setHex(tintHex));
+        roundShafts.setColorAt(i, tintColor.setHex(tintHex));
         let crownHeight = 0;
-        if (rand() < city.crownChance && height > 42) {
+        let crown2Height = 0;
+        if (height > 42 && rand() < city.crownChance) {
           crownHeight = 8 + rand() * 26;
           const crownWidth = width * (0.5 + rand() * 0.28);
           const crownDepth = depth * (0.5 + rand() * 0.28);
           dummy.position.set(x, height - 0.14, z);
           dummy.scale.set(crownWidth, crownHeight, crownDepth);
+          dummy.rotation.set(0, rotation, 0);
           dummy.updateMatrix();
-          crowns.setMatrixAt(i, dummy.matrix);
-        } else {
-          dummy.position.set(x, height - 0.14, z);
-          dummy.scale.set(0.001, 0.001, 0.001);
-          dummy.updateMatrix();
-          crowns.setMatrixAt(i, dummy.matrix);
+          const crownMesh = round ? roundCrowns : crowns;
+          crownMesh.setMatrixAt(i, dummy.matrix);
+          crownMesh.setColorAt(i, tintColor.setHex(tintHex));
+          if (!round && rand() < 0.5) {
+            crown2Height = 3 + rand() * 10;
+            dummy.position.set(x, height + crownHeight, z);
+            dummy.scale.set(width * 0.3, crown2Height, depth * 0.3);
+            dummy.rotation.set(0, rotation, 0);
+            dummy.updateMatrix();
+            crowns2.setMatrixAt(i, dummy.matrix);
+            crowns2.setColorAt(i, tintColor.setHex(tintHex));
+          }
         }
-        records.push({ x, z, width, depth, height, rotation, crownHeight });
+        records.push({
+          x, z, width, depth, height, rotation, crownHeight, crown2Height, round, batch,
+          top: height + crownHeight + crown2Height,
+        });
       }
-      this.group.add(shafts, crowns);
+      this.group.add(shafts, crowns, roundShafts, roundCrowns, crowns2);
     }
 
     const podiumTexture = makePodiumTexture(city.podium.seed, city.podium.hue);
     const podiumMaterial = new THREE.MeshStandardMaterial({
-      color: city.podium.tint,
+      color: 0xd6e1ea,
       map: podiumTexture,
       emissiveMap: podiumTexture,
-      emissive: city.podium.emissive,
-      emissiveIntensity: city.podium.intensity,
-      roughness: 0.62,
-      metalness: 0.35,
+      emissive: 0xffffff,
+      emissiveIntensity: 0.7,
+      roughness: 0.55,
+      metalness: 0.25,
+      envMapIntensity: 0.8,
     });
     const podiums = new THREE.InstancedMesh(buildingGeo, podiumMaterial, records.length);
     records.forEach((record, i) => {
@@ -976,6 +1462,146 @@ export class NeonTrack {
     });
     this.group.add(podiums);
 
+    const bandGeo = new THREE.BoxGeometry(1, 1, 1);
+    const bandMaterial = new THREE.MeshStandardMaterial({
+      color: 0x8292a0, metalness: 0.55, roughness: 0.35,
+      emissive: 0x1b2630, emissiveIntensity: 0.25,
+    });
+    const bands = new THREE.InstancedMesh(bandGeo, bandMaterial, records.length * 3);
+    let bandIndex = 0;
+    for (const record of records) {
+      for (const level of [0.32, 0.64, 0.94]) {
+        if (record.round || record.height < 40) {
+          dummy.position.set(record.x, -100, record.z);
+          dummy.rotation.set(0, 0, 0);
+          dummy.scale.set(0.001, 0.001, 0.001);
+        } else {
+          dummy.position.set(record.x, record.height * level, record.z);
+          dummy.rotation.set(0, record.rotation, 0);
+          dummy.scale.set(record.width * 1.045, 0.7, record.depth * 1.045);
+        }
+        dummy.updateMatrix();
+        bands.setMatrixAt(bandIndex++, dummy.matrix);
+      }
+    }
+    this.group.add(bands);
+
+    const canopyMaterial = new THREE.MeshStandardMaterial({
+      color: 0x596976, metalness: 0.6, roughness: 0.42,
+      emissive: 0x243b49, emissiveIntensity: 0.35,
+    });
+    const canopies = new THREE.InstancedMesh(bandGeo, canopyMaterial, records.length);
+    records.forEach((record, i) => {
+      const podiumHeight = Math.min(city.podium.maxHeight, Math.max(city.podium.minHeight, record.height * 0.09));
+      dummy.position.set(record.x, podiumHeight + 0.12, record.z);
+      dummy.scale.set(record.width * city.podium.grow * 1.05, 0.26, record.depth * city.podium.grow * 1.05);
+      dummy.rotation.set(0, record.rotation, 0);
+      dummy.updateMatrix();
+      canopies.setMatrixAt(i, dummy.matrix);
+    });
+    this.group.add(canopies);
+
+    const finMaterial = new THREE.MeshStandardMaterial({
+      color: 0x2d3946, metalness: 0.7, roughness: 0.32, envMapIntensity: 0.9,
+    });
+    const fins = new THREE.InstancedMesh(bandGeo, finMaterial, records.length * 6);
+    let finIndex = 0;
+    for (const record of records) {
+      const cos = Math.cos(record.rotation);
+      const sin = Math.sin(record.rotation);
+      const show = !record.round && record.height > 35;
+      for (const dzSign of [-1, 1]) {
+        for (const finX of [-0.34, 0, 0.34]) {
+          if (show) {
+            const localX = record.width * finX;
+            const localZ = dzSign * (record.depth * 0.5 + 0.09);
+            dummy.position.set(
+              record.x + localX * cos + localZ * sin,
+              record.height * 0.5,
+              record.z - localX * sin + localZ * cos
+            );
+            dummy.rotation.set(0, record.rotation, 0);
+            dummy.scale.set(0.18, record.height, 0.28);
+          } else {
+            dummy.position.set(record.x, -100, record.z);
+            dummy.rotation.set(0, 0, 0);
+            dummy.scale.set(0.001, 0.001, 0.001);
+          }
+          dummy.updateMatrix();
+          fins.setMatrixAt(finIndex++, dummy.matrix);
+        }
+      }
+    }
+    this.group.add(fins);
+
+    const balconyMaterial = new THREE.MeshStandardMaterial({
+      color: 0x9ba7ae, metalness: 0.18, roughness: 0.58, envMapIntensity: 0.55,
+    });
+    const balconies = new THREE.InstancedMesh(bandGeo, balconyMaterial, records.length * 12);
+    let balconyIndex = 0;
+    for (const record of records) {
+      const cos = Math.cos(record.rotation);
+      const sin = Math.sin(record.rotation);
+      const show = record.batch === 1 && !record.round && record.height > 35;
+      for (const dzSign of [-1, 1]) {
+        for (const level of [0.28, 0.5, 0.72]) {
+          for (const balconyX of [-0.26, 0.26]) {
+            if (show) {
+              const localX = record.width * balconyX;
+              const localZ = dzSign * (record.depth * 0.5 + 0.58);
+              dummy.position.set(
+                record.x + localX * cos + localZ * sin,
+                record.height * level,
+                record.z - localX * sin + localZ * cos
+              );
+              dummy.rotation.set(0, record.rotation, 0);
+              dummy.scale.set(record.width * 0.3, 0.2, 1.15);
+            } else {
+              dummy.position.set(record.x, -100, record.z);
+              dummy.rotation.set(0, 0, 0);
+              dummy.scale.set(0.001, 0.001, 0.001);
+            }
+            dummy.updateMatrix();
+            balconies.setMatrixAt(balconyIndex++, dummy.matrix);
+          }
+        }
+      }
+    }
+    this.group.add(balconies);
+
+    const crownLights = new THREE.InstancedMesh(
+      bandGeo,
+      new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }),
+      records.length * 4
+    );
+    const crownPalette = city.crownLightColors || [0xbfe6ff, 0xffd6b0];
+    let crownIndex = 0;
+    for (const record of records) {
+      const cos = Math.cos(record.rotation);
+      const sin = Math.sin(record.rotation);
+      const y = record.top - 0.35;
+      const edges = [
+        [0, record.depth * 0.5, record.width * 1.02, 0.18],
+        [0, -record.depth * 0.5, record.width * 1.02, 0.18],
+        [record.width * 0.5, 0, 0.18, record.depth * 1.02],
+        [-record.width * 0.5, 0, 0.18, record.depth * 1.02],
+      ];
+      for (const [dx, dz, sx, sz] of edges) {
+        dummy.position.set(
+          record.x + dx * cos + dz * sin,
+          y,
+          record.z - dx * sin + dz * cos
+        );
+        dummy.rotation.set(0, record.rotation, 0);
+        dummy.scale.set(sx, 0.16, sz);
+        dummy.updateMatrix();
+        crownLights.setMatrixAt(crownIndex, dummy.matrix);
+        crownLights.setColorAt(crownIndex, tintColor.setHex(crownPalette[crownIndex % crownPalette.length]));
+        crownIndex++;
+      }
+    }
+    this.group.add(crownLights);
+
     const stripGeo = new THREE.BoxGeometry(1, 1, 1);
     stripGeo.translate(0, 0.5, 0);
     const strips = new THREE.InstancedMesh(
@@ -986,7 +1612,7 @@ export class NeonTrack {
     const color = new THREE.Color();
     let stripIndex = 0;
     for (const record of records) {
-      const show = record.height > 36 && rand() < city.stripChance;
+      const show = !record.round && record.height > 36 && rand() < city.stripChance;
       const cos = Math.cos(record.rotation);
       const sin = Math.sin(record.rotation);
       for (const cx of [-1, 1]) {
@@ -1028,12 +1654,12 @@ export class NeonTrack {
     records.forEach((record, i) => {
       if (record.height > 55 && rand() < city.antennaChance) {
         const antennaHeight = 7 + rand() * 22;
-        dummy.position.set(record.x, record.height + record.crownHeight, record.z);
+        dummy.position.set(record.x, record.top, record.z);
         dummy.rotation.set(0, rand() * Math.PI, 0);
         dummy.scale.set(1, antennaHeight, 1);
         dummy.updateMatrix();
         antennas.setMatrixAt(i, dummy.matrix);
-        dummy.position.set(record.x, record.height + record.crownHeight + antennaHeight, record.z);
+        dummy.position.set(record.x, record.top + antennaHeight, record.z);
         dummy.rotation.set(0, 0, 0);
         dummy.scale.setScalar(rand() < 0.45 ? 1 : 0.001);
         dummy.updateMatrix();
@@ -1061,7 +1687,7 @@ export class NeonTrack {
         const sin = Math.sin(record.rotation);
         dummy.position.set(
           record.x + localX * cos + localZ * sin,
-          record.height + record.crownHeight + 0.65,
+          record.top + 0.65,
           record.z - localX * sin + localZ * cos
         );
         dummy.rotation.set(0, record.rotation, 0);
@@ -1082,7 +1708,7 @@ export class NeonTrack {
       const record = tall[i * 3 % tall.length];
       if (!record) return;
       const signGroup = new THREE.Group();
-      signGroup.position.set(record.x, record.height + record.crownHeight + 5.2, record.z);
+      signGroup.position.set(record.x, record.top + 5.2, record.z);
       signGroup.rotation.y = Math.atan2(-record.x, -record.z);
       const panel = new THREE.Mesh(
         new THREE.PlaneGeometry(11.2, 2.8),
@@ -1103,6 +1729,43 @@ export class NeonTrack {
       }
       this.group.add(signGroup);
     });
+
+    if (city.facadeSigns?.length) {
+      const frameMat = new THREE.MeshStandardMaterial({ color: 0x111a24, metalness: 0.6, roughness: 0.45 });
+      const nearTall = records
+        .filter((record) => record.height > 52)
+        .sort((a, b) => Math.hypot(a.x, a.z) - Math.hypot(b.x, b.z))
+        .slice(0, city.facadeSigns.length);
+      city.facadeSigns.forEach(([text, sub, signColor], i) => {
+        const record = nearTall[i];
+        if (!record) return;
+        const radius = Math.hypot(record.x, record.z) || 1;
+        const dirX = -record.x / radius;
+        const dirZ = -record.z / radius;
+        const offset = Math.max(record.width, record.depth) * 0.5 + 0.32;
+        const group = new THREE.Group();
+        group.position.set(
+          record.x + dirX * offset,
+          Math.max(18, record.height * 0.55),
+          record.z + dirZ * offset
+        );
+        group.rotation.y = Math.atan2(dirX, dirZ);
+        const backing = new THREE.Mesh(new THREE.BoxGeometry(3.9, 13.6, 0.16), frameMat);
+        backing.position.z = -0.08;
+        group.add(backing);
+        const panel = new THREE.Mesh(
+          new THREE.PlaneGeometry(3.55, 13.2),
+          new THREE.MeshBasicMaterial({
+            map: makeVerticalSignTexture(text, sub, signColor),
+            side: THREE.DoubleSide,
+            toneMapped: false,
+          })
+        );
+        panel.position.z = 0.06;
+        group.add(panel);
+        this.group.add(group);
+      });
+    }
   }
 
   buildHarborBlocks(rand) {
@@ -1111,18 +1774,19 @@ export class NeonTrack {
     const buildingGeo = new THREE.BoxGeometry(1, 1, 1);
     buildingGeo.translate(0, 0.5, 0);
     const dummy = new THREE.Object3D();
-    const warehouseTextures = city.warehouses.textures.map(([seed, hue]) => makeWarehouseTexture(seed, hue));
+    const warehouseTextures = city.warehouses.textures.map(([seed, hue]) => makeWarehouseTextures(seed, hue));
     const records = [];
     for (let batch = 0; batch < city.warehouses.materials.length; batch++) {
-      const [color, emissive, emissiveIntensity] = city.warehouses.materials[batch];
+      const texture = warehouseTextures[batch];
       const material = new THREE.MeshStandardMaterial({
-        color,
-        map: warehouseTextures[batch],
-        emissiveMap: warehouseTextures[batch],
-        emissive,
-        emissiveIntensity,
-        roughness: 0.7,
+        color: 0xffffff,
+        map: texture.map,
+        emissiveMap: texture.emissiveMap,
+        emissive: 0xffffff,
+        emissiveIntensity: 0.8,
+        roughness: 0.5,
         metalness: 0.35,
+        envMapIntensity: 0.9,
       });
       const perBatch = city.warehouses.perBatch;
       const warehouses = new THREE.InstancedMesh(buildingGeo, material, perBatch);
@@ -1145,6 +1809,66 @@ export class NeonTrack {
       this.group.add(warehouses);
     }
 
+    const roofMaterial = new THREE.MeshStandardMaterial({
+      color: 0x606b76, metalness: 0.55, roughness: 0.38,
+      side: THREE.DoubleSide, envMapIntensity: 0.9,
+    });
+    const roofs = new THREE.InstancedMesh(makeGableRoofGeometry(), roofMaterial, records.length);
+    records.forEach((record, i) => {
+      const roofHeight = 2 + record.width * 0.12;
+      dummy.position.set(record.x, record.height - 0.08, record.z);
+      dummy.scale.set(record.width * 1.02, roofHeight, record.depth * 1.02);
+      dummy.rotation.set(0, record.rotation, 0);
+      dummy.updateMatrix();
+      roofs.setMatrixAt(i, dummy.matrix);
+    });
+    this.group.add(roofs);
+
+    const canopyMaterial = new THREE.MeshStandardMaterial({
+      color: 0x8c99a4, metalness: 0.55, roughness: 0.42,
+      emissive: 0x2a3b46, emissiveIntensity: 0.3,
+    });
+    const canopies = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), canopyMaterial, records.length);
+    records.forEach((record, i) => {
+      const canopyY = Math.min(5.2, record.height * 0.32);
+      dummy.position.set(record.x, canopyY, record.z);
+      dummy.scale.set(record.width * 1.07, 0.32, record.depth * 1.07);
+      dummy.rotation.set(0, record.rotation, 0);
+      dummy.updateMatrix();
+      canopies.setMatrixAt(i, dummy.matrix);
+    });
+    this.group.add(canopies);
+
+    const siloMaterial = new THREE.MeshStandardMaterial({
+      color: 0xa5b0b8, metalness: 0.7, roughness: 0.32, envMapIntensity: 1.2,
+    });
+    const siloGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 20, 1, false);
+    siloGeo.translate(0, 0.5, 0);
+    const siloCount = 10;
+    const silos = new THREE.InstancedMesh(siloGeo, siloMaterial, siloCount);
+    const siloDomes = new THREE.InstancedMesh(
+      new THREE.SphereGeometry(0.5, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+      siloMaterial,
+      siloCount
+    );
+    for (let i = 0; i < siloCount; i++) {
+      const angle = rand() * Math.PI * 2;
+      const radius = 300 + rand() * 200;
+      const siloRadius = 4 + rand() * 4;
+      const siloHeight = 18 + rand() * 16;
+      const x = Math.cos(angle) * radius;
+      const z = Math.sin(angle) * radius;
+      dummy.position.set(x, -0.02, z);
+      dummy.rotation.set(0, rand() * Math.PI, 0);
+      dummy.scale.set(siloRadius * 2, siloHeight, siloRadius * 2);
+      dummy.updateMatrix();
+      silos.setMatrixAt(i, dummy.matrix);
+      dummy.position.set(x, siloHeight - 0.02, z);
+      dummy.scale.set(siloRadius * 2, siloRadius * 0.9, siloRadius * 2);
+      dummy.updateMatrix();
+      siloDomes.setMatrixAt(i, dummy.matrix);
+    }
+    this.group.add(silos, siloDomes);
     const containerMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       map: makeContainerTexture(),
@@ -1355,7 +2079,7 @@ export class NeonTrack {
     skylineGeo.translate(0, 0.5, 0);
     const skylineMat = new THREE.MeshBasicMaterial({
       color: config.color,
-      map: makeBuildingTexture(config.seed, config.hue),
+      map: makeTowerTextures(config.seed, config.hue, 'glass').map,
       fog: false,
     });
     const skyline = new THREE.InstancedMesh(skylineGeo, skylineMat, config.count);

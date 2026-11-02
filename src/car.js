@@ -215,7 +215,98 @@ function makeBrakeDiscTexture() {
   ctx.stroke();
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return texture;
+}
+
+function makePaintFlakeTexture() {
+  const rand = (() => {
+    let seed = 913;
+    return () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+  })();
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  const image = ctx.createImageData(128, 128);
+  for (let i = 0; i < image.data.length; i += 4) {
+    const dx = (rand() - 0.5) * 0.22;
+    const dy = (rand() - 0.5) * 0.22;
+    const dz = 1;
+    const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    image.data[i] = (dx / length * 0.5 + 0.5) * 255;
+    image.data[i + 1] = (dy / length * 0.5 + 0.5) * 255;
+    image.data[i + 2] = (dz / length * 0.5 + 0.5) * 255;
+    image.data[i + 3] = 255;
+  }
+  ctx.putImageData(image, 0, 0);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(3, 3);
   texture.anisotropy = 4;
+  return texture;
+}
+
+function makeTireNormalTexture() {
+  const rand = (() => {
+    let seed = 377;
+    return () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+  })();
+  const size = 256;
+  const heightCanvas = document.createElement('canvas');
+  heightCanvas.width = heightCanvas.height = size;
+  const hctx = heightCanvas.getContext('2d');
+  hctx.fillStyle = '#808080';
+  hctx.fillRect(0, 0, size, size);
+  for (let i = -size; i < size * 2; i += 26) {
+    hctx.strokeStyle = 'rgba(10,10,10,.85)';
+    hctx.lineWidth = 7;
+    hctx.beginPath();
+    hctx.moveTo(i, 0);
+    hctx.lineTo(i + 42, size);
+    hctx.stroke();
+    hctx.strokeStyle = 'rgba(235,235,235,.35)';
+    hctx.lineWidth = 3;
+    hctx.beginPath();
+    hctx.moveTo(i + 11, 0);
+    hctx.lineTo(i + 53, size);
+    hctx.stroke();
+  }
+  for (let i = 0; i < 500; i++) {
+    hctx.fillStyle = `rgba(${rand() > 0.5 ? 255 : 0},${rand() > 0.5 ? 255 : 0},${rand() > 0.5 ? 255 : 0},.1)`;
+    hctx.fillRect(rand() * size, rand() * size, 1 + rand() * 3, 1 + rand() * 3);
+  }
+  const source = hctx.getImageData(0, 0, size, size).data;
+  const output = hctx.createImageData(size, size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const left = source[(y * size + ((x - 1 + size) % size)) * 4];
+      const right = source[(y * size + ((x + 1) % size)) * 4];
+      const up = source[(((y - 1 + size) % size) * size + x) * 4];
+      const down = source[(((y + 1) % size) * size + x) * 4];
+      const dx = (right - left) / 255 * 1.8;
+      const dy = (down - up) / 255 * 1.8;
+      const nx = -dx;
+      const ny = -dy;
+      const nz = 1;
+      const length = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      const index = (y * size + x) * 4;
+      output.data[index] = (nx / length * 0.5 + 0.5) * 255;
+      output.data[index + 1] = (ny / length * 0.5 + 0.5) * 255;
+      output.data[index + 2] = (nz / length * 0.5 + 0.5) * 255;
+      output.data[index + 3] = 255;
+    }
+  }
+  hctx.putImageData(output, 0, 0);
+  const texture = new THREE.CanvasTexture(heightCanvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(8, 2);
+  texture.anisotropy = 8;
   return texture;
 }
 
@@ -447,6 +538,8 @@ export class SportsCar {
       roughness: 0.17,
       clearcoat: 1,
       clearcoatRoughness: 0.09,
+      clearcoatNormalMap: makePaintFlakeTexture(),
+      clearcoatNormalScale: new THREE.Vector2(0.035, 0.035),
       envMapIntensity: 1.55,
       emissive: new THREE.Color(this.paintColor).multiplyScalar(0.05),
       emissiveIntensity: 0.2,
@@ -992,7 +1085,11 @@ export class SportsCar {
     const baseWidth = 0.31;
     const radiusFactor = this.wheelRadius / baseRadius;
     const widthFactor = wheels.width / baseWidth;
-    const tireMat = new THREE.MeshStandardMaterial({ color: 0x07080a, roughness: 0.88, metalness: 0.02 });
+    const tireNormal = makeTireNormalTexture();
+    const tireMat = new THREE.MeshStandardMaterial({
+      color: 0x090b0d, roughness: 0.84, metalness: 0.03,
+      normalMap: tireNormal, normalScale: new THREE.Vector2(0.55, 0.55), envMapIntensity: 0.55,
+    });
     const rimMat = new THREE.MeshStandardMaterial({ color: wheels.rim, metalness: 0.94, roughness: 0.22 });
     const discMat = new THREE.MeshStandardMaterial({ color: 0x8b959b, metalness: 0.9, roughness: 0.34 });
     const caliperMat = new THREE.MeshStandardMaterial({ color: wheels.caliper, metalness: 0.45, roughness: 0.32 });
@@ -1001,7 +1098,7 @@ export class SportsCar {
       [0.435, -0.06], [0.44, 0], [0.435, 0.06], [0.416, 0.112],
       [0.375, 0.146], [0.305, 0.155], [0.255, 0.145],
     ].map(([radius, width]) => new THREE.Vector2(radius * radiusFactor, width * widthFactor));
-    const tireGeometry = new THREE.LatheGeometry(tireProfile, this.isAI ? 28 : 48);
+    const tireGeometry = new THREE.LatheGeometry(tireProfile, this.isAI ? 32 : 64);
     tireGeometry.rotateZ(Math.PI / 2);
     const discTexture = detail ? makeBrakeDiscTexture() : null;
 
